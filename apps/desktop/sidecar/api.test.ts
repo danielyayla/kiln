@@ -552,6 +552,9 @@ describe("sidecar API", () => {
     const req = store.createEntity({ type: "requirement", title: "Feature" });
     const bp = store.createEntity({ type: "blueprint", title: "Design" });
     store.link(bp.id, req.id, "details");
+    // Second root keeps the store flat — a solo detailed root now reads as a
+    // product root (childless-seeded-root fix), which would empty `features`.
+    store.createEntity({ type: "requirement", title: "Sibling" });
     const done = store.createEntity({ type: "work_order", title: "shipped", status: "done" });
     const ready = store.createEntity({ type: "work_order", title: "next", status: "ready" });
     const doing = store.createEntity({ type: "work_order", title: "underway", status: "in_progress" });
@@ -576,7 +579,7 @@ describe("sidecar API", () => {
     expect(pulse.counts.work_order).toBe(4);
     expect(pulse.workOrders.byStatus.done).toBe(1);
     expect(pulse.completion).toBe(0.25); // 1 done of 4 non-cancelled
-    expect(pulse.features.map((f) => f.title)).toEqual(["Feature"]);
+    expect(pulse.features.map((f) => f.title)).toEqual(["Feature", "Sibling"]);
     expect(pulse.features[0].progress).toBe(0.5);
     // `now` flows through serialization: a ready-but-blocked work order lands
     // in `blocked`, NOT in `now.next` (the honest agent list).

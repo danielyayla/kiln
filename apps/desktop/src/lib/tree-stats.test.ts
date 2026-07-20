@@ -55,9 +55,17 @@ describe("productRootNode", () => {
     expect(productRootNode([product])?.entity.id).toBe("kiln");
   });
 
-  it("returns null for flat stores, multiple roots, and a childless lone root", () => {
+  it("detects a childless root carrying a details blueprint (fresh seeded project)", () => {
+    const product = node("new", {
+      blueprints: [{ entity: ent({ id: "doc", type: "blueprint" }), workOrders: [] }],
+    });
+    expect(productRootNode([product])?.entity.id).toBe("new");
+  });
+
+  it("returns null for flat stores, multiple roots, and a bare childless lone root", () => {
     expect(productRootNode([])).toBeNull();
     expect(productRootNode([node("a"), node("b")])).toBeNull();
     expect(productRootNode([node("lone")])).toBeNull();
+    expect(productRootNode([node("lone", { blueprints: [] })])).toBeNull();
   });
 });
