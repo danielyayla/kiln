@@ -26,11 +26,11 @@ describe("seedProject", () => {
     expect(designDoc.body.trim().length).toBeGreaterThan(0);
   });
 
-  it("does not yet form a productRoot (no requirement children until a feature is added)", () => {
+  it("forms a productRoot from the first minute (the design doc marks it)", () => {
     const s = store();
-    seedProject(s, "X");
-    // A design doc is a `details` blueprint, not a requirement child — the
-    // productRoot convention still needs a feature requirement child_of it.
-    expect(productRoot(s)).toBeNull();
+    const { root } = seedProject(s, "X");
+    // The seeded `details` design doc is enough to satisfy the productRoot
+    // convention — a fresh project must never render its root as a feature.
+    expect(productRoot(s)?.id).toBe(root.id);
   });
 });

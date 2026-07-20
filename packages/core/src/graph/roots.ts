@@ -3,8 +3,11 @@ import type { Store } from "../store";
 
 // The product root (Phase 14 — BP-14 §1) is a CONVENTION, not a schema marker:
 // a store has one exactly when it contains a single parentless requirement and
-// that requirement has requirement children. Any other shape — including a
-// flat store of sibling roots — has no product root and behaves as before.
+// that requirement either has requirement children or carries a `details`
+// blueprint (the design doc every seeded project is born with — Projects BP),
+// so a freshly created, childless project is never misrendered as a bare
+// feature list. Any other shape — including a flat store of sibling roots —
+// has no product root and behaves as before.
 // Accepted cosmetic edge: a store whose only feature has sub-requirements
 // reads as a product root; this self-heals as soon as a second root appears.
 
@@ -18,7 +21,11 @@ const requirementChildren = (store: Store, id: Entity["id"]) =>
 export function productRoot(store: Store): Entity | null {
   const roots = rootRequirements(store);
   if (roots.length !== 1) return null;
-  return requirementChildren(store, roots[0].id).length > 0 ? roots[0] : null;
+  if (requirementChildren(store, roots[0].id).length > 0) return roots[0];
+  const detailedBy = store
+    .linkedFrom(roots[0].id, "details")
+    .some((e) => e.type === "blueprint");
+  return detailedBy ? roots[0] : null;
 }
 
 // The feature set every per-feature view (Pulse rows, X-ray lanes) is built

@@ -126,6 +126,7 @@ describe("projectPulse", () => {
 
   it("counts a feature's ready-but-blocked work orders and lists them globally with blockers", () => {
     const { workOrders } = feature("F", ["ready", "in_progress"]);
+    feature("sibling", []); // keep the store flat — a solo detailed root now reads as a product root
     const [blockedWo, dep] = workOrders;
     store.link(blockedWo.id, dep.id, "depends_on");
 
@@ -142,6 +143,7 @@ describe("projectPulse", () => {
 
   it("does not report a ready work order whose dependencies are all done", () => {
     const { workOrders } = feature("F", ["ready", "done"]);
+    feature("sibling", []); // keep the store flat — a solo detailed root now reads as a product root
     store.link(workOrders[0].id, workOrders[1].id, "depends_on");
 
     const pulse = projectPulse(store);
