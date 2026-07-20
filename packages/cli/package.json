@@ -1,0 +1,31 @@
+{
+  "name": "@kiln/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "kiln": "./dist/index.js" },
+  "files": ["dist"],
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "build": "tsup",
+    "kiln": "node --experimental-sqlite dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiln/agents": "workspace:*",
+    "@kiln/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@kiln/mcp-server": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.10.5",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

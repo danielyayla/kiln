@@ -1,0 +1,5 @@
+[mcp_servers.kiln]
+url = "http://127.0.0.1:3777/mcp"
+
+[mcp_servers.kiln.http_headers]
+Authorization = "Bearer choose-a-secret"

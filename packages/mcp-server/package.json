@@ -1,0 +1,33 @@
+{
+  "name": "@kiln/mcp-server",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kiln-mcp": "./dist/index.js",
+    "kiln-seed": "./dist/seed.js"
+  },
+  "files": ["dist"],
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "build": "tsup",
+    "start": "node --experimental-sqlite dist/index.js",
+    "seed": "node --experimental-sqlite dist/seed.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kiln/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kiln-desktop",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "KILN_DB_PATH=/Users/danielkapper/Projects/kiln/apps/desktop/kiln.db",
+        "pnpm",
+        "-C",
+        "apps/desktop",
+        "dev"
+      ],
+      "port": 1420,
+      "autoPort": false
+    },
+    {
+      "name": "kiln-desktop-vite-only",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_KILN_SIDECAR_URL=http://127.0.0.1:4833",
+        "pnpm",
+        "-C",
+        "apps/desktop",
+        "exec",
+        "vite",
+        "--port",
+        "1430"
+      ],
+      "port": 1430,
+      "autoPort": false
+    },
+    {
+      "name": "kiln-desktop-vite-1432",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_KILN_SIDECAR_URL=http://127.0.0.1:4823",
+        "pnpm",
+        "-C",
+        "apps/desktop",
+        "exec",
+        "vite",
+        "--port",
+        "1432"
+      ],
+      "port": 1432,
+      "autoPort": false
+    },
+    {
+      "name": "kiln-desktop-vite-1431",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_KILN_SIDECAR_URL=http://127.0.0.1:4823",
+        "pnpm",
+        "-C",
+        "apps/desktop",
+        "exec",
+        "vite",
+        "--port",
+        "1431"
+      ],
+      "port": 1431,
+      "autoPort": false
+    }
+  ]
+}

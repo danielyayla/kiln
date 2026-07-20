@@ -1,0 +1,5 @@
+{
+  "main": "dist-binary/binary.cjs",
+  "output": "dist-binary/sea-blob.blob",
+  "disableExperimentalSEAWarning": true
+}

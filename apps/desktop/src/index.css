@@ -1,0 +1,117 @@
+/* Design tokens (BP-6). The ONLY place raw colors may appear — components
+   read these through src/theme.ts. Warm paper palette carried over from the
+   MVP surfaces. */
+:root {
+  --k-bg: #fffdf7;
+  --k-surface: #fbf9f3;
+  --k-inset: #f4f0e6;
+  --k-selection: #e8e2d6;
+  --k-chip: #f2eee2;
+  --k-border: #e0dacc;
+  --k-border-strong: #d9d2c0;
+  --k-text: #2a2620;
+  --k-muted: #8a8577;
+  --k-faint: #b3ac9c;
+  --k-danger: #8c2f28;
+  --k-danger-surface: #f7dcd9;
+  --k-accent: #8a5a1e;
+  --k-ok: #4a7c59;
+  --k-warn: #b5892e;
+
+  /* Entity-type badges (REQ / BP / WO / ART) */
+  --k-req-fg: #8a5a1e;
+  --k-req-bg: #f3e6cf;
+  --k-bp-fg: #3d5f86;
+  --k-bp-bg: #e0e8f1;
+  --k-wo-fg: #48704f;
+  --k-wo-bg: #e2ecdf;
+  --k-art-fg: #736e60;
+  --k-art-bg: #eae7dc;
+
+  /* Suggestion / diff decorations */
+  --k-ins-fg: #1d5c26;
+  --k-ins-bg: #d8f0d3;
+  --k-del-fg: #8c2f28;
+  --k-del-bg: #f7dcd9;
+
+  --k-shadow: 0 4px 12px rgba(42, 38, 32, 0.14);
+  --k-backdrop: rgba(42, 38, 32, 0.25);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: var(--k-bg);
+  color: var(--k-text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--k-accent);
+  outline-offset: 1px;
+}
+
+/* Navigator tree rows: hover needs a pseudo-class, so it lives here rather
+   than in inline styles. Selection is a class too so hover doesn't fight an
+   inline background. */
+.k-tree-row {
+  background: transparent;
+}
+.k-tree-row:hover {
+  background: var(--k-chip);
+}
+.k-tree-row--selected,
+.k-tree-row--selected:hover {
+  background: var(--k-selection);
+}
+.k-tree-row--selected > .k-tree-label {
+  font-weight: 600;
+}
+/* Row menus stay hidden until the row is hovered/focused or the menu is open. */
+.k-tree-row .k-row-menu {
+  visibility: hidden;
+}
+.k-tree-row:hover .k-row-menu,
+.k-tree-row:focus-within .k-row-menu,
+.k-tree-row .k-row-menu[data-open="true"] {
+  visibility: visible;
+}
+
+/* CodeMirror suggestion decorations (Editor.tsx) */
+.kiln-ins {
+  background: var(--k-ins-bg);
+  color: var(--k-ins-fg);
+  border-radius: 2px;
+}
+.kiln-del {
+  background: var(--k-del-bg);
+  color: var(--k-del-fg);
+  text-decoration: line-through;
+}
+
+/* Context Inspector: brief highlight when a health check jumps to its
+   target document (ContextInspector.tsx). */
+@keyframes kiln-flash {
+  from {
+    background: var(--k-selection);
+  }
+  to {
+    background: transparent;
+  }
+}
+.kiln-flash {
+  animation: kiln-flash 1.4s ease-out;
+}
