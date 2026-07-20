@@ -52,6 +52,7 @@ export function ProjectSwitcher({ onSwitched }: { onSwitched: (id: string) => vo
     <>
       <RowMenu
         label="Switch project"
+        align="left"
         trigger={
           <span
             data-testid="active-project"

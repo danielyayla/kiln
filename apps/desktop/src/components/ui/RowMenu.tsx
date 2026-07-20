@@ -17,11 +17,16 @@ export function RowMenu({
   items,
   trigger,
   triggerStyle,
+  align = "right",
 }: {
   label: string;
   items: RowMenuItem[];
   trigger?: ReactNode;
   triggerStyle?: CSSProperties;
+  // Which edge of the trigger the menu aligns to. Default "right" (menu opens
+  // leftward) suits ⋯ overflows at a row's right edge; pass "left" for triggers
+  // near the left edge of the window so the menu doesn't spill off-screen.
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -61,7 +66,7 @@ export function RowMenu({
             role="menu"
             style={{
               position: "absolute",
-              right: 0,
+              [align]: 0,
               top: "100%",
               zIndex: 11,
               background: color.bg,
