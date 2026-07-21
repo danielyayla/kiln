@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Entity, WorkOrderStatus } from "@kiln/core";
 import { api, type WorkOrderReadiness } from "../lib/client";
-import { BlockedBadge, Button, Input, RowMenu, SectionHeader, STATUS_COLOR, STATUS_LABEL } from "./ui";
+import { effectiveWorkType, filterByWorkType, WORK_TYPES, type WorkTypeFilter } from "../lib/work-type";
+import { BlockedBadge, Button, Input, RowMenu, SectionHeader, Select, STATUS_COLOR, STATUS_LABEL } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 // Local literal (type-checked against core) — value imports from @kiln/core
@@ -41,6 +42,30 @@ function StatusPill({ status, withCaret }: { status: WorkOrderStatus; withCaret:
       />
       {STATUS_LABEL[status]}
       {withCaret ? " ▾" : ""}
+    </span>
+  );
+}
+
+// The card's work-type badge (BP-18). `feature` is the default and renders
+// unbadged — the badge marks the exceptions, same chip tokens as StatusPill.
+function WorkTypeBadge({ workOrder }: { workOrder: Entity }) {
+  const workType = effectiveWorkType(workOrder);
+  if (workType === "feature") return null;
+  return (
+    <span
+      data-testid={`work-type-${workOrder.id}`}
+      style={{
+        padding: `1px ${space(2)}px`,
+        borderRadius: 999,
+        background: color.chip,
+        border: `1px solid ${color.border}`,
+        fontSize: font.xs,
+        color: color.muted,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      {workType}
     </span>
   );
 }
@@ -189,6 +214,7 @@ function Card({
         >
           {workOrder.title}
         </strong>
+        <WorkTypeBadge workOrder={workOrder} />
         {showBlocked && <BlockedBadge title={blockedTitle(readiness!.blocking)} />}
         <Button
           variant="ghost"
@@ -278,35 +304,65 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
   const readiness = useQuery({ queryKey: ["readiness"], queryFn: () => api.readiness() });
   const readinessById = new Map((readiness.data ?? []).map((r) => [r.id, r]));
 
+  // Type filter (BP-18): one filter over every column, by EFFECTIVE type —
+  // `feature` therefore includes unset cards. Session-local, never persisted.
+  const [typeFilter, setTypeFilter] = useState<WorkTypeFilter>("all");
+  const visible = filterByWorkType(workOrders.data ?? [], typeFilter);
+
   return (
-    <div data-testid="board" style={{ display: "flex", gap: space(2), alignItems: "flex-start" }}>
-      {STATUSES.map((status) => {
-        const items = (workOrders.data ?? []).filter((w) => (w.status ?? "draft") === status);
-        return (
-          <section
-            key={status}
-            aria-label={`${STATUS_LABEL[status]} column`}
-            style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              background: color.inset,
-              borderRadius: radius.lg,
-              padding: space(2),
-              minHeight: 120,
-            }}
-          >
-            <SectionHeader size="sm">
-              {STATUS_LABEL[status]} ({items.length})
-            </SectionHeader>
-            {items.length === 0 && (
-              <p style={{ margin: 0, fontSize: font.xs, color: color.faint }}>{EMPTY_HINT[status]}</p>
-            )}
-            {items.map((w) => (
-              <Card key={w.id} workOrder={w} readiness={readinessById.get(w.id)} onSelect={onSelect} />
-            ))}
-          </section>
-        );
-      })}
+    <div style={{ display: "grid", gap: space(2) }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: space(1) }}>
+        <label htmlFor="board-type-filter" style={{ fontSize: font.xs, color: color.muted }}>
+          type
+        </label>
+        <Select
+          id="board-type-filter"
+          aria-label="filter by work type"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as WorkTypeFilter)}
+          style={{ fontSize: font.xs, padding: `1px ${space(1.5)}px` }}
+        >
+          <option value="all">all types</option>
+          {WORK_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </Select>
+      </div>
+      {/* minWidth 0: as a grid item the row would otherwise size to its
+          min-content and defeat the columns' shrink-to-fit (BP-6). */}
+      <div data-testid="board" style={{ display: "flex", gap: space(2), alignItems: "flex-start", minWidth: 0 }}>
+        {STATUSES.map((status) => {
+          const items = visible.filter((w) => (w.status ?? "draft") === status);
+          return (
+            <section
+              key={status}
+              aria-label={`${STATUS_LABEL[status]} column`}
+              style={{
+                flex: "1 1 0",
+                minWidth: 0,
+                background: color.inset,
+                borderRadius: radius.lg,
+                padding: space(2),
+                minHeight: 120,
+              }}
+            >
+              <SectionHeader size="sm">
+                {STATUS_LABEL[status]} ({items.length})
+              </SectionHeader>
+              {items.length === 0 && (
+                <p style={{ margin: 0, fontSize: font.xs, color: color.faint }}>
+                  {typeFilter === "all" ? EMPTY_HINT[status] : `No ${typeFilter} work orders.`}
+                </p>
+              )}
+              {items.map((w) => (
+                <Card key={w.id} workOrder={w} readiness={readinessById.get(w.id)} onSelect={onSelect} />
+              ))}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }

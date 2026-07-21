@@ -22,6 +22,7 @@ import type {
   UsageReport,
   WorkOrderContext,
   WorkOrderStatus,
+  WorkType,
 } from "@kiln/core";
 // Type-only — erased at build, so @kiln/agents (and the Anthropic SDK) never
 // enter the webview bundle.
@@ -107,11 +108,11 @@ export const api = {
   listEntities: (type: EntityType) => request<Entity[]>(`/entities?type=${type}`),
   listWorkOrders: (status: WorkOrderStatus) => request<Entity[]>(`/entities?status=${status}`),
   getEntity: (id: string) => request<Entity>(`/entities/${id}`),
-  createEntity: (input: { type: EntityType; title: string; body?: string }) =>
+  createEntity: (input: { type: EntityType; title: string; body?: string; workType?: WorkType | null }) =>
     request<Entity>("/entities", { method: "POST", body: JSON.stringify(input) }),
   patchEntity: (
     id: string,
-    patch: Partial<Pick<Entity, "title" | "body" | "status" | "assignee">>,
+    patch: Partial<Pick<Entity, "title" | "body" | "status" | "assignee" | "workType">>,
     // overrideGate: the explicit human override for the draft→ready
     // completeness gate; ignored by every other patch.
     opts?: { overrideGate?: boolean },

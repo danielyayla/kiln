@@ -1,5 +1,15 @@
 import type { WorkType } from "../domain";
 
+// The legacy `[bug]`-style title convention (CLAUDE.md), as a pure parser.
+// `feature` is not a recognized prefix — capability work carries none — and
+// the match is case-insensitive, mirroring the backfill's SQLite LIKE.
+const TITLE_PREFIX = /^\[(bug|refactor|perf|chore)\]/i;
+
+export function workTypeFromTitle(title: string): WorkType | null {
+  const m = TITLE_PREFIX.exec(title);
+  return m ? (m[1].toLowerCase() as WorkType) : null;
+}
+
 // Per-type execution guidance (BP-18): how an agent should work an order of
 // this type, injected into every assembled context. A pure map — deterministic,
 // model-free, versioned with the code — so the same work order always assembles

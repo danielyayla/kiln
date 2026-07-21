@@ -31,6 +31,7 @@ import {
   Suggestion,
   usageReport,
   WORK_ORDER_STATUSES,
+  WORK_TYPES,
   type Entity,
   type ModelUsageFeature,
   type Store,
@@ -60,6 +61,8 @@ const CreateEntity = z.object({
   type: z.enum(ENTITY_TYPES),
   title: z.string().min(1),
   body: z.string().default(""),
+  // Passthrough (BP-18): the Store enforces the work_order-only constraint.
+  workType: z.enum(WORK_TYPES).nullable().optional(),
 });
 
 const PatchEntity = z.object({
@@ -67,6 +70,7 @@ const PatchEntity = z.object({
   body: z.string().optional(),
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
   assignee: z.string().nullable().optional(),
+  workType: z.enum(WORK_TYPES).nullable().optional(),
 });
 
 const CreateLink = z.object({

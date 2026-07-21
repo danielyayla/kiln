@@ -1,9 +1,11 @@
 import type { Id } from "../domain";
+import { effectiveWorkType } from "../domain";
 import { NotFoundError } from "../errors";
 import type { Store } from "../store";
 import { driftChecks } from "./drift";
 import type { HealthCheck } from "./health";
 import { productRoot, rootRequirements } from "./roots";
+import { workTypeFromTitle } from "./work-type";
 
 // Layer 2 of the authoring-methodology enforcement ladder: deterministic
 // per-document checks for a single requirement / blueprint / work order /
@@ -97,6 +99,19 @@ export function documentHealth(store: Store, id: Id): DocumentHealth {
 
   if (entity.type === "requirement" && entity.body.trim() !== "" && !hasHeading(entity.body, "Non-goals"))
     add("info", "missing-non-goals", "No Non-goals section — every feature has adjacent scope it should decline.");
+
+  if (entity.type === "work_order") {
+    // The field is the source of truth (BP-18); a `[bug]`-style title prefix
+    // that says otherwise misleads every reader who trusts the title.
+    const prefix = workTypeFromTitle(entity.title);
+    const effective = effectiveWorkType(entity);
+    if (prefix !== null && prefix !== effective)
+      add(
+        "info",
+        "work-type-prefix-mismatch",
+        `Title prefix [${prefix}] disagrees with the work type "${effective}" — set workType to ${prefix} or fix the title; the field is what context assembly and the Board trust.`,
+      );
+  }
 
   checks.push(...driftChecks(store, entity));
 

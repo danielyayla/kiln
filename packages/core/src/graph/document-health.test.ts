@@ -186,6 +186,33 @@ describe("documentHealth — template shape", () => {
     expect(level(wo.id, "revised-after-done")).toBe("warn");
   });
 
+  it("flags a work order whose title prefix disagrees with its work type", () => {
+    const wo = store.createEntity({ type: "work_order", title: "[bug] fix it", body: WO_BODY, workType: "refactor" });
+    const check = documentHealth(store, wo.id).checks.find((c) => c.code === "work-type-prefix-mismatch");
+    expect(check?.level).toBe("info");
+    expect(check?.message).toContain("[bug]");
+    expect(check?.message).toContain('"refactor"');
+  });
+
+  it("stays quiet when the title prefix matches the field, and treats the prefix case-insensitively", () => {
+    const ok = store.createEntity({ type: "work_order", title: "[bug] fix it", body: WO_BODY, workType: "bug" });
+    expect(codes(ok.id)).not.toContain("work-type-prefix-mismatch");
+    const upper = store.createEntity({ type: "work_order", title: "[BUG] fix it", body: WO_BODY, workType: "bug" });
+    expect(codes(upper.id)).not.toContain("work-type-prefix-mismatch");
+  });
+
+  it("flags a prefixed title on an unset field (effective feature), and ignores unprefixed titles", () => {
+    // Unset field reads as `feature` — a [chore] prefix then misleads.
+    const unset = store.createEntity({ type: "work_order", title: "[chore] tidy", body: WO_BODY });
+    expect(codes(unset.id)).toContain("work-type-prefix-mismatch");
+    // No prefix never mismatches, whatever the field says.
+    const plain = store.createEntity({ type: "work_order", title: "Ship the thing", body: WO_BODY, workType: "bug" });
+    expect(codes(plain.id)).not.toContain("work-type-prefix-mismatch");
+    // `[feature]` is not a recognized prefix — capability work carries none.
+    const feat = store.createEntity({ type: "work_order", title: "[feature] add it", body: WO_BODY, workType: "bug" });
+    expect(codes(feat.id)).not.toContain("work-type-prefix-mismatch");
+  });
+
   it("legacy documents never error — a pre-methodology store reports info/warn only", () => {
     const req = store.createEntity({ type: "requirement", title: "Old phase", body: "As a builder I want things." });
     const bp = store.createEntity({ type: "blueprint", title: "Old BP", body: "## Approach\nlegacy" });

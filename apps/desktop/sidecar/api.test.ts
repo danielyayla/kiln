@@ -85,6 +85,49 @@ describe("sidecar API", () => {
     expect((await app.request("/entities/nope")).status).toBe(404);
   });
 
+  it("passes workType through create and patch, and 400s on non-work-orders", async () => {
+    // Create with a type; the store persists it.
+    const created = await json<Entity>(
+      await app.request("/entities", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "work_order", title: "W", workType: "refactor" }),
+      }),
+    );
+    expect(created.workType).toBe("refactor");
+
+    // PATCH changes it, and null clears it back to unset.
+    const patched = await app.request(`/entities/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workType: "bug" }),
+    });
+    expect((await json<Entity>(patched)).workType).toBe("bug");
+    const cleared = await app.request(`/entities/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workType: null }),
+    });
+    expect((await json<Entity>(cleared)).workType).toBeNull();
+
+    // The work_order-only constraint surfaces as a 400 (ConstraintError).
+    const requirement = store.createEntity({ type: "requirement", title: "R" });
+    const rejected = await app.request(`/entities/${requirement.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workType: "bug" }),
+    });
+    expect(rejected.status).toBe(400);
+
+    // An out-of-enum value is a schema 400, not a store error.
+    const invalid = await app.request(`/entities/${created.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workType: "epic" }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it("filters work orders by status", async () => {
     const wo = store.createEntity({ type: "work_order", title: "W", status: "ready" });
     store.createEntity({ type: "work_order", title: "W2", status: "draft" });
