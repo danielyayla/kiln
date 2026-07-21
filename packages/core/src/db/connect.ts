@@ -69,6 +69,22 @@ CREATE TABLE IF NOT EXISTS context_receipts (
 );
 CREATE INDEX IF NOT EXISTS idx_context_receipts_wo ON context_receipts(work_order_id);
 
+-- Completion receipts: the return half of the handoff loop — an agent's
+-- immutable report of what came back (what was built, how it was verified,
+-- code testimony) filed when a work order is closed. Append-only, never
+-- updated or deleted, never deduped.
+CREATE TABLE IF NOT EXISTS completion_receipts (
+  id                 TEXT PRIMARY KEY,
+  work_order_id      TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  summary            TEXT NOT NULL,
+  verification       TEXT NOT NULL,
+  commits_json       TEXT NOT NULL,
+  branch             TEXT,
+  files_touched_json TEXT NOT NULL,
+  created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_completion_receipts_wo ON completion_receipts(work_order_id);
+
 -- AI settings & usage: host-level configuration (opaque string values; the
 -- consumer parses booleans etc.) and the one-row-per-model-call ledger.
 CREATE TABLE IF NOT EXISTS settings (

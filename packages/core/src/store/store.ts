@@ -1,4 +1,5 @@
 import type {
+  CompletionReceipt,
   ContextReceipt,
   Entity,
   EntityPatch,
@@ -52,6 +53,13 @@ export interface Store {
   saveContextReceipt(receipt: ContextReceipt): void;
   listContextReceipts(workOrderId: Id): ContextReceipt[];
   latestContextReceipt(workOrderId: Id): ContextReceipt | null;
+
+  // Completion receipts — the return half of the handoff loop: the immutable
+  // report an agent files when closing a work order. Append-only (no update,
+  // no delete) and never deduped, so there is no `latest*`; `list` is
+  // chronological (oldest first).
+  saveCompletionReceipt(receipt: CompletionReceipt): void;
+  listCompletionReceipts(workOrderId: Id): CompletionReceipt[];
 
   // AI settings & usage: host-level configuration as opaque string values —
   // booleans are stored "true"/"false" and parsed at the consumer boundary.
