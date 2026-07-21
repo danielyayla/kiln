@@ -93,6 +93,27 @@ describe("assignLanes", () => {
     expect(laneOf.loose).toBe(UNFILED_LANE);
   });
 
+  it("a childless root with a details blueprint gets the product lane (fresh seeded project)", () => {
+    const snapshot: GraphSnapshot = {
+      nodes: [node("root", "requirement", "New project"), node("doc", "blueprint", "Architecture")],
+      edges: [edge("doc", "root", "details")],
+    };
+    const { laneOf, order, label } = assignLanes(snapshot);
+    expect(laneOf.root).toBe("root");
+    expect(laneOf.doc).toBe("root");
+    expect(order).toEqual(["root"]);
+    expect(label.root).toBe("New project");
+  });
+
+  it("a childless root with no details blueprint keeps flat behavior", () => {
+    const snapshot: GraphSnapshot = {
+      nodes: [node("solo", "requirement", "Solo")],
+      edges: [],
+    };
+    const { order } = assignLanes(snapshot);
+    expect(order).toEqual(["solo"]);
+  });
+
   it("two parentless requirements mean no product root — flat behavior unchanged", () => {
     const snapshot: GraphSnapshot = {
       nodes: [

@@ -67,10 +67,31 @@ describe("product-root convention", () => {
     expect(featureRoots(store).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
   });
 
-  it("a single root with no requirement children is a plain feature, not a product root", () => {
-    const { req } = feature("solo", ["ready"]);
+  it("a childless root with a details blueprint is the product root (fresh seeded project)", () => {
+    // Same shape seedProject() creates: root requirement + design-doc blueprint.
+    const root = store.createEntity({ type: "requirement", title: "New project" });
+    const doc = store.createEntity({ type: "blueprint", title: "New project system architecture" });
+    store.link(doc.id, root.id, "details");
+
+    expect(productRoot(store)?.id).toBe(root.id);
+    expect(featureRoots(store)).toEqual([]);
+  });
+
+  it("a childless root with no details blueprint is a plain feature, not a product root", () => {
+    const req = store.createEntity({ type: "requirement", title: "solo" });
+    const wo = store.createEntity({ type: "work_order", title: "wo" });
+    store.link(wo.id, req.id, "implements");
+
     expect(productRoot(store)).toBeNull();
     expect(featureRoots(store).map((r) => r.id)).toEqual([req.id]);
+  });
+
+  it("a solo feature with a details blueprint reads as a product root (accepted edge)", () => {
+    // Shape-indistinguishable from a fresh seeded project; self-heals when a
+    // second root appears.
+    const { req } = feature("solo", ["ready"]);
+    expect(productRoot(store)?.id).toBe(req.id);
+    expect(featureRoots(store)).toEqual([]);
   });
 
   it("non-requirement children do not make a root a product root", () => {

@@ -30,8 +30,11 @@ export function treeProgress(node: FeatureTreeNode): TreeProgress {
 
 // The Phase 14 product-root convention, read off the navigator tree the same
 // way assignLanes reads it off the snapshot: exactly one root requirement,
-// and it has requirement children. Null for flat stores — the sidebar then
-// renders exactly as before.
+// and it has requirement children OR a `details` blueprint (the design doc a
+// seeded project is born with — mirrors core's productRoot()). Null for flat
+// stores — the sidebar then renders exactly as before.
 export function productRootNode(tree: FeatureTreeNode[]): FeatureTreeNode | null {
-  return tree.length === 1 && tree[0].children.length > 0 ? tree[0] : null;
+  if (tree.length !== 1) return null;
+  const root = tree[0];
+  return root.children.length > 0 || (root.blueprints ?? []).length > 0 ? root : null;
 }

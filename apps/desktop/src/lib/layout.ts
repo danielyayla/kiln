@@ -60,12 +60,17 @@ export function assignLanes(snapshot: GraphSnapshot): {
   // Product-root convention (Phase 14) — duplicated from core's roots.ts on
   // the snapshot, because the webview does not import runtime core (the
   // Phase 13 stable-stringify precedent): exactly one parentless requirement,
-  // and it has requirement children. Null for flat snapshots — every code
+  // and it has requirement children OR a `details` blueprint (the design doc
+  // a seeded project is born with). Null for flat snapshots — every code
   // path below is then identical to before.
   const reqNodes = snapshot.nodes.filter((n) => n.type === "requirement");
   const rootReqs = reqNodes.filter((n) => parentOf[n.id] === undefined);
   const productRoot =
-    rootReqs.length === 1 && reqNodes.some((n) => parentOf[n.id] === rootReqs[0].id) ? rootReqs[0].id : null;
+    rootReqs.length === 1 &&
+    (reqNodes.some((n) => parentOf[n.id] === rootReqs[0].id) ||
+      Object.values(bpReq).includes(rootReqs[0].id))
+      ? rootReqs[0].id
+      : null;
 
   // The lane root of a requirement: walk child_of up until there is no parent
   // — or, when a product root exists, until the NEXT step up would be the
