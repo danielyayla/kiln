@@ -1,6 +1,7 @@
-import type { Entity, Id } from "../domain";
+import { effectiveWorkType, type Entity, type Id, type WorkType } from "../domain";
 import { NotFoundError } from "../errors";
 import type { Store } from "../store";
+import { workTypeGuidance } from "./work-type";
 
 // One rung of inherited intent: an ancestor requirement and the artifacts it
 // references, folded into a work order's context so root-level intent reaches a
@@ -17,6 +18,11 @@ export interface LineageEntry {
 // The full linked context a coding agent receives for a single work order.
 export interface WorkOrderContext {
   workOrder: Entity;
+  // The work order's effective type and its per-type execution guidance
+  // (BP-18) — tier-1 actionable, not background. Both derive purely from the
+  // work order, so repeated assemblies stay byte-identical.
+  workType: WorkType;
+  guidance: string;
   blueprint: Entity | null;
   requirement: Entity | null;
   artifacts: Entity[];
@@ -58,7 +64,8 @@ export function assembleWorkOrderContext(store: Store, id: Id): WorkOrderContext
     }
   }
 
-  return { workOrder, blueprint, requirement, artifacts, lineage };
+  const workType = effectiveWorkType(workOrder);
+  return { workOrder, workType, guidance: workTypeGuidance(workType), blueprint, requirement, artifacts, lineage };
 }
 
 // Feature-tree helpers over child_of edges.

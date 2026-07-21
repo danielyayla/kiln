@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SqliteStore } from "../store/sqlite-store";
 import { ancestors, assembleWorkOrderContext, descendants } from "./context";
+import { workTypeGuidance } from "./work-type";
 
 let store: SqliteStore;
 beforeEach(() => {
@@ -41,6 +42,22 @@ describe("assembleWorkOrderContext", () => {
 
   it("throws for an unknown work order", () => {
     expect(() => assembleWorkOrderContext(store, "does-not-exist")).toThrow();
+  });
+
+  it("carries the effective work type and its guidance, deterministically", () => {
+    const bug = store.createEntity({ type: "work_order", title: "Fix it", workType: "bug", status: "ready" });
+    const first = assembleWorkOrderContext(store, bug.id);
+    expect(first.workType).toBe("bug");
+    expect(first.guidance).toBe(workTypeGuidance("bug"));
+    expect(first.guidance).toContain("regression test");
+    // Byte-identical across repeated assemblies of the same work order.
+    expect(JSON.stringify(assembleWorkOrderContext(store, bug.id))).toBe(JSON.stringify(first));
+
+    // Unset resolves to feature — the default lives in effectiveWorkType.
+    const untyped = store.createEntity({ type: "work_order", title: "Build it", status: "ready" });
+    const ctx = assembleWorkOrderContext(store, untyped.id);
+    expect(ctx.workType).toBe("feature");
+    expect(ctx.guidance).toBe(workTypeGuidance("feature"));
   });
 
   it("has an empty lineage for a flat store (no child_of) — output unchanged", () => {

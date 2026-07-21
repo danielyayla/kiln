@@ -126,14 +126,17 @@ Ask the agent to work the board, or call the tools directly:
    `depends_on` target not yet `done` is withheld even if its own status is
    `ready`, so an agent is never handed work whose groundwork is unfinished.
 2. **`get_work_order { id }`** → the full assembled context:
-   `{ workOrder, blueprint, requirement, artifacts, dependencies, lineage }` —
-   the complete `work_order → blueprint → requirement → artifact` chain in one
+   `{ workOrder, workType, guidance, blueprint, requirement, artifacts,
+   dependencies, lineage }` — the complete
+   `work_order → blueprint → requirement → artifact` chain in one
    call. Missing links come back as `null`/`[]`, never as errors. The payload
    fields:
 
    | Field | Shape | What it is |
    |---|---|---|
    | `workOrder` | entity | The unit of work. |
+   | `workType` | `feature \| bug \| refactor \| perf \| chore` | The order's effective work type (unset resolves to `feature`). |
+   | `guidance` | string | **Per-type execution discipline — tier-1, follow it while implementing** (e.g. bug → reproduce first and keep a regression test; refactor → no behavior change; perf → measure before/after and cite numbers in the report). Deterministic: derived purely from `workType`, never model-generated. |
    | `blueprint` | entity \| null | The blueprint it implements. |
    | `requirement` | entity \| null | The requirement that blueprint details. |
    | `artifacts` | entity[] | Artifacts the requirement references directly. |

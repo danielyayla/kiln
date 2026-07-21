@@ -70,6 +70,22 @@ describe("MCP tools", () => {
     expect(ctx.lineage).toEqual([]);
   });
 
+  it("get_work_order carries workType and per-type guidance (BP-18)", async () => {
+    const wo = store.createEntity({ type: "work_order", title: "Fix the leak", workType: "bug", status: "ready" });
+    const res = await client.callTool({ name: "get_work_order", arguments: { id: wo.id } });
+    expect(res.isError).toBeFalsy();
+    const ctx = res.structuredContent as { workOrder: { workType: string | null }; workType: string; guidance: string };
+    expect(ctx.workOrder.workType).toBe("bug");
+    expect(ctx.workType).toBe("bug");
+    expect(ctx.guidance).toContain("regression test");
+
+    // An untyped work order resolves to feature with feature guidance.
+    const plain = res.isError ? null : await client.callTool({ name: "get_work_order", arguments: { id: chain.workOrderId } });
+    const plainCtx = plain!.structuredContent as { workType: string; guidance: string };
+    expect(plainCtx.workType).toBe("feature");
+    expect(plainCtx.guidance.length).toBeGreaterThan(0);
+  });
+
   it("get_work_order surfaces ancestor lineage for a nested work order", async () => {
     // root(Root PRD, Root arch BP) <- leaf(Leaf spec) ; blueprint details leaf.
     const aRoot = store.createEntity({ type: "artifact", title: "Root PRD", body: "why" });
@@ -124,7 +140,7 @@ describe("MCP tools", () => {
     const res = await client.callTool({ name: "get_work_order", arguments: { id: chain.workOrderId } });
     // Exactly the assembled-context payload — no receipt fields leak in.
     expect(Object.keys(res.structuredContent as object).sort()).toEqual(
-      ["artifacts", "blueprint", "dependencies", "lineage", "requirement", "workOrder"].sort(),
+      ["artifacts", "blueprint", "dependencies", "guidance", "lineage", "requirement", "workOrder", "workType"].sort(),
     );
   });
 

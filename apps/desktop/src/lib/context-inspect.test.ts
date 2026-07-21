@@ -26,6 +26,8 @@ const entity = (id: string, type: Entity["type"], title: string, body = "body"):
 
 const full: WorkOrderContext = {
   workOrder: entity("w1", "work_order", "Ship it", "do `thing`"),
+  workType: "feature",
+  guidance: "Feature work: implement to the blueprint.",
   blueprint: entity("b1", "blueprint", "BP", "design"),
   requirement: entity("r1", "requirement", "Req", "intent"),
   artifacts: [entity("a1", "artifact", "Notes", "notes body")],

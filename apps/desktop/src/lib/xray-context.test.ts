@@ -29,6 +29,8 @@ const inheritedArtifact = entity("artifact", "Kickoff transcript", "inherited");
 function context(overrides: Partial<WorkOrderContext> = {}): WorkOrderContext {
   return {
     workOrder,
+    workType: "feature",
+    guidance: "Feature work: implement to the blueprint.",
     blueprint,
     requirement,
     artifacts: [directArtifact],
@@ -100,6 +102,8 @@ describe("summarizeXRayContext", () => {
     const reordered = {
       lineage: current.lineage,
       artifacts: current.artifacts,
+      guidance: current.guidance,
+      workType: current.workType,
       requirement: current.requirement,
       blueprint: current.blueprint,
       workOrder: current.workOrder,

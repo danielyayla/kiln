@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ENTITY_TYPES, WORK_ORDER_STATUSES } from "@kiln/core";
+import { ENTITY_TYPES, WORK_ORDER_STATUSES, WORK_TYPES } from "@kiln/core";
 
 // Zod mirror of the core `Entity` shape, used as MCP tool output schemas so
 // clients receive validated, self-describing structured content.
@@ -9,6 +9,7 @@ export const entitySchema = z.object({
   title: z.string(),
   body: z.string(),
   status: z.enum(WORK_ORDER_STATUSES).nullable(),
+  workType: z.enum(WORK_TYPES).nullable(),
   assignee: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -34,9 +35,12 @@ export const lineageEntrySchema = z.object({
 
 // Output shape of `get_work_order`: the full assembled context (BP-2) plus the
 // work order's declared dependencies (FRD-3) and its inherited ancestor
-// lineage (Phase 6).
+// lineage (Phase 6). `workType` and `guidance` (BP-18) are tier-1 actionable:
+// the order's effective type and the per-type execution discipline to follow.
 export const workOrderContextShape = {
   workOrder: entitySchema,
+  workType: z.enum(WORK_TYPES),
+  guidance: z.string(),
   blueprint: entitySchema.nullable(),
   requirement: entitySchema.nullable(),
   artifacts: z.array(entitySchema),

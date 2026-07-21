@@ -12,3 +12,4 @@ export * from "./roots";
 export * from "./skills";
 export * from "./snapshot";
 export * from "./tree";
+export * from "./work-type";

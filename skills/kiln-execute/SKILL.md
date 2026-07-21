@@ -48,8 +48,9 @@ Call `get_work_order { id }`. The payload is the whole intent chain, and it is
 **tiered** — consume it in this order:
 
 - **Tier 1 — actionable. Read first, follow exactly:** `workOrder`,
-  `blueprint`, `requirement`, `dependencies`. This is the task, its design,
-  its acceptance criteria, and its sequencing.
+  `workType` + `guidance`, `blueprint`, `requirement`, `dependencies`. This is
+  the task, how to work its kind of change, its design, its acceptance
+  criteria, and its sequencing.
 - **Tier 2 — situational. Consult when relevant:** `artifacts`, and `lineage`
   entries nearest-ancestor-first. Ground truth for unclear wording and
   inherited constraints.
@@ -62,6 +63,7 @@ Call `get_work_order { id }`. The payload is the whole intent chain, and it is
 | Tier | Field | What it is | How to use it |
 |---|---|---|---|
 | 1 | `workOrder` | The unit of work | **This body is your scope. All of it, only it.** |
+| 1 | `workType`, `guidance` | The order's kind (`feature`/`bug`/`refactor`/`perf`/`chore`) and its execution discipline | **Follow the guidance while implementing** — e.g. a bug is reproduced first and keeps its regression test; a refactor changes no behavior; perf work cites before/after numbers in the report |
 | 1 | `blueprint` | The design it implements | The how: approach, seams, constraints |
 | 1 | `requirement` | The intent behind the blueprint | The why — acceptance criteria live here |
 | 1 | `dependencies` | Every `depends_on` target: `{id, title, status}` | Explains sequencing. If you were offered this order, they are all `done` — their deliverables exist; build on them instead of re-implementing them |

@@ -74,7 +74,7 @@ export function registerTools(server: McpServer, store: Store): void {
     {
       title: "Get work order context",
       description:
-        "Return the full linked context for a work order: its blueprint, that blueprint's requirement, the requirement's referenced artifacts, and the work order's depends_on dependencies (id, title, status).",
+        "Return the full linked context for a work order: its blueprint, that blueprint's requirement, the requirement's referenced artifacts, the work order's depends_on dependencies (id, title, status), plus its workType and per-type execution guidance — follow the guidance while implementing.",
       inputSchema: { id: z.string().min(1) },
       outputSchema: workOrderContextShape,
     },

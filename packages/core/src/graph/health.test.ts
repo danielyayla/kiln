@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Entity } from "../domain";
 import type { WorkOrderContext } from "./context";
 import { contextHealth } from "./health";
+import { workTypeGuidance } from "./work-type";
 
 const ent = (over: Partial<Entity>): Entity => ({
   id: "id",
@@ -19,6 +20,8 @@ const ent = (over: Partial<Entity>): Entity => ({
 // A healthy baseline context; override pieces per test.
 const ctx = (over: Partial<WorkOrderContext> = {}): WorkOrderContext => ({
   workOrder: ent({ type: "work_order", title: "WO", body: "do it" }),
+  workType: "feature",
+  guidance: workTypeGuidance("feature"),
   blueprint: ent({ type: "blueprint", title: "BP", body: "the approach" }),
   requirement: ent({ type: "requirement", title: "REQ", body: "the intent" }),
   artifacts: [],
