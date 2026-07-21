@@ -10,6 +10,7 @@ const TARGET: Entity = {
   title: "Traceable handoff",
   body: "",
   status: null,
+  workType: null,
   assignee: null,
   createdAt: "2026-07-06T00:00:00.000Z",
   updatedAt: "2026-07-06T00:00:00.000Z",

@@ -15,6 +15,7 @@ import {
   type ModelUsage,
   type Revision,
   type WorkOrderStatus,
+  type WorkType,
 } from "../domain";
 import { ConstraintError, NotFoundError } from "../errors";
 import type { Store } from "./store";
@@ -25,6 +26,7 @@ interface EntityRow {
   title: string;
   body: string;
   status: string | null;
+  work_type: string | null;
   assignee: string | null;
   created_at: string;
   updated_at: string;
@@ -37,6 +39,7 @@ function toEntity(r: EntityRow): Entity {
     title: r.title,
     body: r.body,
     status: (r.status as WorkOrderStatus | null) ?? null,
+    workType: (r.work_type as WorkType | null) ?? null,
     assignee: r.assignee ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -119,14 +122,27 @@ export class SqliteStore implements Store {
 
   createEntity(input: NewEntity): Entity {
     const data = NewEntity.parse(input);
+    if (data.workType != null && data.type !== "work_order") {
+      throw new ConstraintError(`workType applies only to work orders; entity type is ${data.type}`);
+    }
     const now = new Date().toISOString();
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO entities (id, type, title, body, status, assignee, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO entities (id, type, title, body, status, work_type, assignee, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, data.type, data.title, data.body, data.status ?? null, data.assignee ?? null, now, now);
+      .run(
+        id,
+        data.type,
+        data.title,
+        data.body,
+        data.status ?? null,
+        data.workType ?? null,
+        data.assignee ?? null,
+        now,
+        now,
+      );
     this.syncFts(id);
     return this.getEntity(id)!;
   }
@@ -169,14 +185,18 @@ export class SqliteStore implements Store {
         );
       }
     }
+    if (data.workType != null && existing.type !== "work_order") {
+      throw new ConstraintError(`workType applies only to work orders; entity ${id} is a ${existing.type}`);
+    }
     this.db
       .prepare(
-        `UPDATE entities SET title=?, body=?, status=?, assignee=?, updated_at=? WHERE id=?`,
+        `UPDATE entities SET title=?, body=?, status=?, work_type=?, assignee=?, updated_at=? WHERE id=?`,
       )
       .run(
         data.title ?? existing.title,
         data.body ?? existing.body,
         data.status !== undefined ? data.status : existing.status,
+        data.workType !== undefined ? data.workType : existing.workType,
         data.assignee !== undefined ? data.assignee : existing.assignee,
         new Date().toISOString(),
         id,

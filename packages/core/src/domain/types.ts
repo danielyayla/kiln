@@ -9,12 +9,21 @@ export type LinkType = (typeof LINK_TYPES)[number];
 export const WORK_ORDER_STATUSES = ["draft", "ready", "in_progress", "done", "cancelled"] as const;
 export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
 
+// Work types classify work orders (BP-18); the set is closed. `feature` is
+// never stored implicitly — absence means "unset", and effectiveWorkType is
+// the one place the default lives.
+export const WORK_TYPES = ["feature", "bug", "refactor", "perf", "chore"] as const;
+export type WorkType = (typeof WORK_TYPES)[number];
+
+export const effectiveWorkType = (e: Pick<Entity, "workType">): WorkType => e.workType ?? "feature";
+
 export interface Entity {
   id: Id;
   type: EntityType;
   title: string;
   body: string;
   status: WorkOrderStatus | null;
+  workType: WorkType | null;
   assignee: string | null;
   createdAt: string;
   updatedAt: string;

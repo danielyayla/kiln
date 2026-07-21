@@ -116,5 +116,24 @@ export function connect(path = ":memory:"): DB {
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+// Additive migrations for stores created before a column existed. Each step is
+// guarded by table_info, so re-opening an up-to-date store is a no-op.
+function migrate(db: DB): void {
+  const entityColumns = db.prepare("PRAGMA table_info(entities)").all() as unknown as {
+    name: string;
+  }[];
+  if (!entityColumns.some((c) => c.name === "work_type")) {
+    db.exec("ALTER TABLE entities ADD COLUMN work_type TEXT");
+    // One-time backfill (BP-18): translate the legacy `[bug]`-style title
+    // convention into the field. Titles are testimony and stay untouched;
+    // `feature` is not a recognized prefix — capability work carries none.
+    const backfill = db.prepare(
+      "UPDATE entities SET work_type = ? WHERE type = 'work_order' AND work_type IS NULL AND title LIKE ?",
+    );
+    for (const t of ["bug", "refactor", "perf", "chore"]) backfill.run(t, `[${t}]%`);
+  }
 }

@@ -16,6 +16,7 @@ const DOC: Entity = {
   title: "Traceable handoff",
   body: "## User story\nAs a builder, I want traceable handoff soon.\n\n## Acceptance criteria\n- Context arrives quickly",
   status: null,
+  workType: null,
   assignee: null,
   createdAt: "2026-07-08T00:00:00.000Z",
   updatedAt: "2026-07-08T00:00:00.000Z",

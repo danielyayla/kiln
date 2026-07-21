@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { ENTITY_TYPES, MODEL_USAGE_FEATURES, WORK_ORDER_STATUSES } from "./types";
+import { ENTITY_TYPES, MODEL_USAGE_FEATURES, WORK_ORDER_STATUSES, WORK_TYPES } from "./types";
 
 export const NewEntity = z.object({
   type: z.enum(ENTITY_TYPES),
   title: z.string().min(1),
   body: z.string().default(""),
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
+  workType: z.enum(WORK_TYPES).nullable().optional(),
   assignee: z.string().nullable().optional(),
 });
 export type NewEntity = z.input<typeof NewEntity>;
@@ -22,6 +23,7 @@ export const EntityPatch = z.object({
   title: z.string().min(1).optional(),
   body: z.string().optional(),
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
+  workType: z.enum(WORK_TYPES).nullable().optional(),
   assignee: z.string().nullable().optional(),
 });
 export type EntityPatch = z.infer<typeof EntityPatch>;

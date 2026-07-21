@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { effectiveWorkType } from "../domain";
 import { ConstraintError } from "../errors";
 import { SqliteStore } from "./sqlite-store";
 
@@ -29,6 +30,33 @@ describe("SqliteStore — entities", () => {
     expect(u.status).toBe("ready");
     expect(u.title).toBe("WO");
     expect(u.body).toBe("a");
+  });
+
+  it("persists workType on work orders and refuses it elsewhere", () => {
+    const wo = store.createEntity({ type: "work_order", title: "WO", workType: "bug" });
+    expect(wo.workType).toBe("bug");
+    expect(store.getEntity(wo.id)?.workType).toBe("bug");
+
+    expect(() => store.createEntity({ type: "requirement", title: "R", workType: "bug" })).toThrow(
+      ConstraintError,
+    );
+    expect(() => store.createEntity({ type: "work_order", title: "W", workType: "nope" as any })).toThrow();
+
+    // Patch semantics mirror status/assignee: undefined keeps, null clears.
+    expect(store.updateEntity(wo.id, { workType: "perf" }).workType).toBe("perf");
+    expect(store.updateEntity(wo.id, { title: "Renamed" }).workType).toBe("perf");
+    expect(store.updateEntity(wo.id, { workType: null }).workType).toBeNull();
+
+    const req = store.createEntity({ type: "requirement", title: "R2" });
+    expect(req.workType).toBeNull();
+    expect(() => store.updateEntity(req.id, { workType: "chore" })).toThrow(ConstraintError);
+  });
+
+  it("resolves the effective work type with feature as the default", () => {
+    const typed = store.createEntity({ type: "work_order", title: "W", workType: "refactor" });
+    const untyped = store.createEntity({ type: "work_order", title: "W2" });
+    expect(effectiveWorkType(typed)).toBe("refactor");
+    expect(effectiveWorkType(untyped)).toBe("feature");
   });
 
   it("deletes an entity and cascades its links, suggestions, and revisions", () => {

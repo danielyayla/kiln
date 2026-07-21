@@ -12,6 +12,7 @@ function entity(type: EntityType, title: string, id = title): Entity {
     title,
     body: `${title} body`,
     status: type === "work_order" ? "ready" : null,
+    workType: null,
     assignee: null,
     createdAt: "2026-07-10T00:00:00.000Z",
     updatedAt: "2026-07-10T00:00:00.000Z",

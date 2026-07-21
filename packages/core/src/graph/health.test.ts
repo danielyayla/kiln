@@ -9,6 +9,7 @@ const ent = (over: Partial<Entity>): Entity => ({
   title: "T",
   body: "",
   status: null,
+  workType: null,
   assignee: null,
   createdAt: "t",
   updatedAt: "t",
