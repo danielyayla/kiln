@@ -1,3 +1,4 @@
+export * from "./completion";
 export * from "./context";
 export * from "./document-health";
 export * from "./health";

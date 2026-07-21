@@ -25,3 +25,32 @@ export const EntityPatch = z.object({
   assignee: z.string().nullable().optional(),
 });
 export type EntityPatch = z.infer<typeof EntityPatch>;
+
+// Rejects empty and whitespace-only strings without transforming the value —
+// reports are testimony, stored verbatim, so no silent trimming.
+const nonBlank = (field: string) =>
+  z.string().refine((s) => s.trim().length > 0, {
+    message: `${field} must not be empty or whitespace-only`,
+  });
+
+// An agent's completion report — the input half of a completion receipt.
+// `summary` is what was built, `verification` how it was proven (with real
+// output). `commits`/`branch`/`filesTouched` are the agent's testimony about
+// the code, recorded as given and never verified against a repository.
+export const CompletionReport = z.object({
+  summary: nonBlank("summary"),
+  verification: nonBlank("verification"),
+  commits: z.array(z.string()).default([]),
+  branch: z.string().optional(),
+  filesTouched: z.array(z.string()).default([]),
+});
+export type CompletionReport = z.input<typeof CompletionReport>;
+
+// The persisted record: a completion report tied to its work order. Receipts
+// are append-only and immutable — core exposes no update or delete surface.
+export const CompletionReceipt = CompletionReport.extend({
+  id: z.string().min(1),
+  workOrderId: z.string().min(1),
+  createdAt: z.string().min(1),
+});
+export type CompletionReceipt = z.infer<typeof CompletionReceipt>;

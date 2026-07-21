@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { connect, type DB } from "../db/connect";
 import {
+  CompletionReceipt,
   EntityPatch,
   NewEntity,
   NewModelUsage,
@@ -58,6 +59,31 @@ function toContextReceipt(r: ContextReceiptRow): ContextReceipt {
     hash: r.hash,
     createdAt: r.created_at,
   };
+}
+
+interface CompletionReceiptRow {
+  id: string;
+  work_order_id: string;
+  summary: string;
+  verification: string;
+  commits_json: string;
+  branch: string | null;
+  files_touched_json: string;
+  created_at: string;
+}
+
+function toCompletionReceipt(r: CompletionReceiptRow): CompletionReceipt {
+  const receipt: CompletionReceipt = {
+    id: r.id,
+    workOrderId: r.work_order_id,
+    summary: r.summary,
+    verification: r.verification,
+    commits: JSON.parse(r.commits_json),
+    filesTouched: JSON.parse(r.files_touched_json),
+    createdAt: r.created_at,
+  };
+  if (r.branch !== null) receipt.branch = r.branch;
+  return receipt;
 }
 
 interface ModelUsageRow {
@@ -310,6 +336,37 @@ export class SqliteStore implements Store {
       .prepare(`SELECT * FROM context_receipts WHERE work_order_id=? ORDER BY rowid DESC LIMIT 1`)
       .get(workOrderId) as unknown as ContextReceiptRow | undefined;
     return row ? toContextReceipt(row) : null;
+  }
+
+  saveCompletionReceipt(receipt: CompletionReceipt): void {
+    const data = CompletionReceipt.parse(receipt);
+    if (!this.getEntity(data.workOrderId)) throw new NotFoundError(data.workOrderId);
+    this.db
+      .prepare(
+        `INSERT INTO completion_receipts
+           (id, work_order_id, summary, verification, commits_json, branch, files_touched_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        data.id,
+        data.workOrderId,
+        data.summary,
+        data.verification,
+        JSON.stringify(data.commits),
+        data.branch ?? null,
+        JSON.stringify(data.filesTouched),
+        data.createdAt,
+      );
+  }
+
+  // rowid ordering as for context receipts: true insertion order, robust to
+  // created_at ties. Deliberately no latest* — completion receipts are never
+  // deduped; every close is its own record.
+  listCompletionReceipts(workOrderId: Id): CompletionReceipt[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM completion_receipts WHERE work_order_id=? ORDER BY rowid`)
+      .all(workOrderId) as unknown as CompletionReceiptRow[];
+    return rows.map(toCompletionReceipt);
   }
 
   getSetting(key: string): string | null {
