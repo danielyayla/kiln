@@ -117,9 +117,13 @@ as an immutable completion receipt (the result returns its
 - `verification` (required, non-blank) — how it was proven, **with real
   output**: the actual test/typecheck results, the live check you ran.
   "Tests pass" alone is not verification.
-- `commits`, `branch`, `filesTouched` (optional testimony) — the commits,
-  branch, and files of your change, recorded as given. Kiln never inspects the
-  repo; your testimony IS the execution record.
+- `commits`, `branch`, `filesTouched` (testimony — **always include when the
+  work produced commits**) — the commit sha(s), the branch they landed on, and
+  the files changed, recorded as given. Kiln never inspects the repo; your
+  testimony IS the execution record, and downstream drift checks are built on
+  it. The schema tolerates omitting these; you don't get to. A close with
+  `commits: []` when a commit exists is an incomplete report — omit them only
+  when the work genuinely produced no commits (e.g. investigation-only).
 
 Values are stored verbatim (whitespace-only fields are rejected, nothing is
 trimmed), so write for a reader with no chat history. Then tell the human the
@@ -171,3 +175,6 @@ statuses.
 4. `done` always carries the completion report — a real summary and real
    verification output. If you cannot fill it truthfully, the work is not
    done.
+5. If the work produced commits, the report carries them — `commits`,
+   `branch`, `filesTouched`. Empty testimony beside a real commit is a
+   false record.
