@@ -189,6 +189,58 @@ describe("sidecar API", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("commits a body-bearing PATCH through commitBody — manual saves write revisions", async () => {
+    const req = store.createEntity({ type: "requirement", title: "R", body: "v1" });
+
+    // A changed body writes exactly one revision, atomically with the body.
+    const saved = await app.request(`/entities/${req.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "v2" }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await json<Entity>(saved)).body).toBe("v2");
+    const revisions = store.listRevisions(req.id);
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0].body).toBe("v2");
+
+    // Saving the same body again is a no-op — no revision spam.
+    const noop = await app.request(`/entities/${req.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "v2" }),
+    });
+    expect(noop.status).toBe(200);
+    expect(store.listRevisions(req.id)).toHaveLength(1);
+
+    // Non-body PATCHes never touch the revision log.
+    const titled = await app.request(`/entities/${req.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Renamed" }),
+    });
+    expect((await json<Entity>(titled)).title).toBe("Renamed");
+    const wo = store.createEntity({ type: "work_order", title: "W", status: "draft" });
+    await app.request(`/entities/${wo.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "ready", overrideGate: true }),
+    });
+    expect(store.listRevisions(req.id)).toHaveLength(1);
+    expect(store.listRevisions(wo.id)).toHaveLength(0);
+
+    // A body + title PATCH commits the body and applies the title together.
+    const both = await app.request(`/entities/${req.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Renamed again", body: "v3" }),
+    });
+    const bothEntity = await json<Entity>(both);
+    expect(bothEntity.title).toBe("Renamed again");
+    expect(bothEntity.body).toBe("v3");
+    expect(store.listRevisions(req.id)).toHaveLength(2);
+  });
+
   it("serves linked and linked-from edges", async () => {
     const requirement = store.createEntity({ type: "requirement", title: "R" });
     const artifact = store.createEntity({ type: "artifact", title: "A" });
@@ -274,6 +326,8 @@ describe("sidecar API", () => {
     });
     expect(res.status).toBe(400);
     expect((await json<{ error: string }>(res)).error).toContain("pending suggestion");
+    // The refused save committed nothing — no body change, no revision.
+    expect(store.listRevisions(requirement.id)).toHaveLength(0);
 
     // Dismiss, then the same edit succeeds.
     await app.request("/suggestions/s-lock", { method: "DELETE" });

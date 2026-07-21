@@ -296,7 +296,26 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
         }
       }
     }
-    return c.json(store.updateEntity(id, patch));
+    // Manual saves are commits (BP-6): a body-bearing PATCH writes through
+    // commitBody so the edit lands in revision history — the clock drift
+    // checks and receipt diffs read. commitBody is anchor-lock exempt (apply
+    // and restore legitimately bypass the lock), so the pending-suggestion
+    // check happens here; a body equal to the current one skips the commit.
+    const { body, ...rest } = patch;
+    if (body !== undefined) {
+      const entity = store.getEntity(id);
+      if (!entity) throw new NotFoundError(id);
+      if (body !== entity.body) {
+        const pending = store.listSuggestions(id).length;
+        if (pending > 0) {
+          throw new ConstraintError(
+            `entity ${id} has ${pending} pending suggestion(s); resolve or dismiss them before editing the body`,
+          );
+        }
+        store.commitBody(id, body);
+      }
+    }
+    return c.json(store.updateEntity(id, rest));
   });
 
   // The whole knowledge graph in one call (Phase 7 — Project X-ray): typed
