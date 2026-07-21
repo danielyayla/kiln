@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -9,13 +9,16 @@ import {
   DEFAULT_STATUS,
   NotFoundError,
   readyWorkOrders,
+  recordCompletionReceipt,
   recordContextReceipt,
   WORK_ORDER_STATUSES,
   workOrderDependencies,
+  type CompletionReceipt,
   type Store,
   type WorkOrderStatus,
 } from "@kiln/core";
 import {
+  completionReportSchema,
   entitySchema,
   readyWorkOrderSummarySchema,
   workOrderContextShape,
@@ -100,14 +103,21 @@ export function registerTools(server: McpServer, store: Store): void {
     {
       title: "Update work order status",
       description:
-        "Transition a work order's status. Allowed: draft→ready, ready→in_progress, in_progress→done, and any state→cancelled.",
+        "Transition a work order's status. Allowed: draft→ready, ready→in_progress, in_progress→done, and any state→cancelled. " +
+        "Closing in_progress→done REQUIRES a completion report — summary (what was built) and verification (how it was proven, with real output), " +
+        "plus optional commits/branch/filesTouched testimony — and records an immutable completion receipt with the transition, returning its id. " +
+        "A report on any other transition is rejected.",
       inputSchema: {
         id: z.string().min(1),
         status: z.enum(WORK_ORDER_STATUSES),
+        report: completionReportSchema.optional(),
       },
-      outputSchema: { workOrder: entitySchema },
+      outputSchema: {
+        workOrder: entitySchema,
+        completionReceiptId: z.string().optional(),
+      },
     },
-    async ({ id, status }) => {
+    async ({ id, status, report }) => {
       const entity = store.getEntity(id);
       if (!entity) return toolError(`Work order not found: ${id}`);
       if (entity.type !== "work_order") {
@@ -121,6 +131,15 @@ export function registerTools(server: McpServer, store: Store): void {
             `Allowed from ${from}: ${allowed.length ? allowed.join(", ") : "(none — terminal)"}.`,
         );
       }
+      // A completion report travels only on the closing transition — anywhere
+      // else it is a caller mistake, refused loudly over silently dropped.
+      const closing = from === "in_progress" && status === "done";
+      if (report && !closing) {
+        return toolError(
+          `A completion report is only accepted when closing in_progress → done; this is ${from} → ${status}. ` +
+            `No receipt was recorded and the status is unchanged.`,
+        );
+      }
       // Completeness gate (methodology layer 3): agents cannot set an
       // incomplete work order ready — and there is deliberately no override
       // over MCP; a human fixes the document or overrides in the app.
@@ -132,6 +151,32 @@ export function registerTools(server: McpServer, store: Store): void {
               `A human must fix the document (or override in the Kiln app).`,
           );
         }
+      }
+      if (closing) {
+        if (!report) {
+          return toolError(
+            "Closing in_progress → done requires a completion report. Missing: report.summary (what was built) " +
+              "and report.verification (how it was proven, with real output). Optional testimony: report.commits, " +
+              "report.branch, report.filesTouched. The status is unchanged.",
+          );
+        }
+        // Receipt before status write: a failed receipt write leaves the
+        // transition untaken, so a receipt-less `done` cannot exist.
+        let receipt: CompletionReceipt;
+        try {
+          receipt = recordCompletionReceipt(store, id, report);
+        } catch (err) {
+          if (err instanceof ZodError) {
+            const issues = err.issues
+              .map((i) => `${["report", ...i.path].join(".")}: ${i.message}`)
+              .join("; ");
+            return toolError(`Invalid completion report — no receipt recorded, status unchanged: ${issues}`);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return toolError(`Completion receipt could not be recorded — status unchanged: ${message}`);
+        }
+        const updated = store.updateEntity(id, { status });
+        return ok({ workOrder: updated, completionReceiptId: receipt.id });
       }
       const updated = store.updateEntity(id, { status });
       return ok({ workOrder: updated });

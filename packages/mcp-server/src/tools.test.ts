@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { SqliteStore } from "@kiln/core";
@@ -20,6 +20,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await client.close();
   store.close();
 });
@@ -221,5 +222,122 @@ describe("MCP tools", () => {
       arguments: { id: chain.workOrderId, status: "banana" },
     });
     expect(res.isError).toBe(true);
+  });
+
+  it("update_work_order_status refuses in_progress → done without a completion report", async () => {
+    store.updateEntity(chain.workOrderId, { status: "in_progress" });
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: { id: chain.workOrderId, status: "done" },
+    });
+    expect(res.isError).toBe(true);
+    const text = (res.content as { text: string }[])[0].text;
+    expect(text).toContain("report.summary");
+    expect(text).toContain("report.verification");
+    expect(store.getEntity(chain.workOrderId)?.status).toBe("in_progress");
+    expect(store.listCompletionReceipts(chain.workOrderId)).toEqual([]);
+  });
+
+  it("update_work_order_status closes with a report, records exactly one receipt, and returns its id", async () => {
+    store.updateEntity(chain.workOrderId, { status: "in_progress" });
+    const report = {
+      summary: "Implemented the completion-report requirement.",
+      verification: "pnpm -C packages/mcp-server test — all green.",
+      commits: ["abc1234"],
+      branch: "main",
+      filesTouched: ["packages/mcp-server/src/tools.ts"],
+    };
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: { id: chain.workOrderId, status: "done", report },
+    });
+    expect(res.isError).toBeFalsy();
+    const { workOrder, completionReceiptId } = res.structuredContent as {
+      workOrder: { status: string };
+      completionReceiptId: string;
+    };
+    expect(workOrder.status).toBe("done");
+    expect(completionReceiptId).toBeTruthy();
+    expect(store.getEntity(chain.workOrderId)?.status).toBe("done");
+    // Exactly one receipt, its fields round-tripped verbatim.
+    const receipts = store.listCompletionReceipts(chain.workOrderId);
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      id: completionReceiptId,
+      workOrderId: chain.workOrderId,
+      ...report,
+    });
+  });
+
+  it("update_work_order_status accepts a minimal report and defaults the testimony fields", async () => {
+    store.updateEntity(chain.workOrderId, { status: "in_progress" });
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: {
+        id: chain.workOrderId,
+        status: "done",
+        report: { summary: "Built it.", verification: "Verified live." },
+      },
+    });
+    expect(res.isError).toBeFalsy();
+    const [receipt] = store.listCompletionReceipts(chain.workOrderId);
+    expect(receipt.commits).toEqual([]);
+    expect(receipt.filesTouched).toEqual([]);
+    expect(receipt.branch).toBeUndefined();
+  });
+
+  it("update_work_order_status rejects a report on any other transition and writes no receipt", async () => {
+    // ready → in_progress is legal, but a report does not belong on it.
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: {
+        id: chain.workOrderId,
+        status: "in_progress",
+        report: { summary: "premature", verification: "n/a" },
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as { text: string }[])[0].text).toContain(
+      "only accepted when closing in_progress → done",
+    );
+    expect(store.getEntity(chain.workOrderId)?.status).toBe("ready");
+    expect(store.listCompletionReceipts(chain.workOrderId)).toEqual([]);
+  });
+
+  it("update_work_order_status surfaces core validation of a blank-field report", async () => {
+    // "   " passes the schema boundary's min(1); core's whitespace rule rejects it.
+    store.updateEntity(chain.workOrderId, { status: "in_progress" });
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: {
+        id: chain.workOrderId,
+        status: "done",
+        report: { summary: "   ", verification: "Tested." },
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as { text: string }[])[0].text).toContain("report.summary");
+    expect(store.getEntity(chain.workOrderId)?.status).toBe("in_progress");
+    expect(store.listCompletionReceipts(chain.workOrderId)).toEqual([]);
+  });
+
+  it("update_work_order_status keeps the status when the receipt write fails", async () => {
+    store.updateEntity(chain.workOrderId, { status: "in_progress" });
+    vi.spyOn(store, "saveCompletionReceipt").mockImplementation(() => {
+      throw new Error("simulated receipt write failure");
+    });
+    const res = await client.callTool({
+      name: "update_work_order_status",
+      arguments: {
+        id: chain.workOrderId,
+        status: "done",
+        report: { summary: "Built it.", verification: "Tested." },
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as { text: string }[])[0].text).toContain("status unchanged");
+    expect(store.getEntity(chain.workOrderId)?.status).toBe("in_progress");
+    vi.restoreAllMocks();
+    expect(store.listCompletionReceipts(chain.workOrderId)).toEqual([]);
   });
 });

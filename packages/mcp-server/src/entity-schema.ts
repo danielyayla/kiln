@@ -50,3 +50,15 @@ export const readyWorkOrderSummarySchema = z.object({
   title: z.string(),
   summary: z.string(),
 });
+
+// An agent's completion report — required when closing in_progress → done, the
+// return half of the handoff loop. Mirror of core's CompletionReport, which
+// re-validates authoritatively inside recordCompletionReceipt (rejecting
+// whitespace-only fields and defaulting the testimony lists).
+export const completionReportSchema = z.object({
+  summary: z.string().min(1),
+  verification: z.string().min(1),
+  commits: z.array(z.string()).optional(),
+  branch: z.string().optional(),
+  filesTouched: z.array(z.string()).optional(),
+});
