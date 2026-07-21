@@ -1,6 +1,7 @@
 export * from "./completion";
 export * from "./context";
 export * from "./document-health";
+export * from "./drift";
 export * from "./health";
 export * from "./overlays";
 export * from "./pulse";

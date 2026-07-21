@@ -157,6 +157,35 @@ describe("documentHealth — template shape", () => {
     expect(codes(b.id)).not.toContain("feature-title-shape");
   });
 
+  it("merges drift checks alongside the shape checks", () => {
+    // A done work order with no implements link and no receipt carries both
+    // the traceability warn and the drift info in one list.
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: WO_BODY });
+    store.updateEntity(wo.id, { status: "done" });
+    const c = codes(wo.id);
+    expect(c).toContain("missing-implements");
+    expect(c).toContain("done-without-receipt");
+    expect(level(wo.id, "done-without-receipt")).toBe("info");
+  });
+
+  it("merges revised-after-done for a done work order revised after its receipt", () => {
+    const bp = store.createEntity({ type: "blueprint", title: "BP", body: "## Approach\nx" });
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: WO_BODY });
+    store.link(wo.id, bp.id, "implements");
+    store.updateEntity(wo.id, { status: "done" });
+    store.saveCompletionReceipt({
+      id: "r1",
+      workOrderId: wo.id,
+      summary: "built",
+      verification: "12 passed",
+      commits: [],
+      filesTouched: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    store.commitBody(wo.id, WO_BODY + "\ndrifted");
+    expect(level(wo.id, "revised-after-done")).toBe("warn");
+  });
+
   it("legacy documents never error — a pre-methodology store reports info/warn only", () => {
     const req = store.createEntity({ type: "requirement", title: "Old phase", body: "As a builder I want things." });
     const bp = store.createEntity({ type: "blueprint", title: "Old BP", body: "## Approach\nlegacy" });

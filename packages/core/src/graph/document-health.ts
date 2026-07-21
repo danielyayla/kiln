@@ -1,6 +1,7 @@
 import type { Id } from "../domain";
 import { NotFoundError } from "../errors";
 import type { Store } from "../store";
+import { driftChecks } from "./drift";
 import type { HealthCheck } from "./health";
 import { productRoot, rootRequirements } from "./roots";
 
@@ -96,6 +97,8 @@ export function documentHealth(store: Store, id: Id): DocumentHealth {
 
   if (entity.type === "requirement" && entity.body.trim() !== "" && !hasHeading(entity.body, "Non-goals"))
     add("info", "missing-non-goals", "No Non-goals section — every feature has adjacent scope it should decline.");
+
+  checks.push(...driftChecks(store, entity));
 
   return { checks };
 }
