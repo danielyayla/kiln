@@ -6,6 +6,7 @@ import {
   contextVerdict,
   docChars,
   mapCheckTarget,
+  mergeReceiptTimeline,
   renderContextText,
   sectionDrift,
   totalChars,
@@ -220,5 +221,34 @@ describe("contextVerdict", () => {
       errors: 1,
       warnings: 2,
     });
+  });
+});
+
+describe("mergeReceiptTimeline", () => {
+  const at = (id: string, createdAt: string) => ({ id, createdAt });
+
+  it("returns nothing when both sides are empty", () => {
+    expect(mergeReceiptTimeline([], [])).toEqual([]);
+  });
+
+  it("interleaves deliveries and returns newest-first", () => {
+    const rows = mergeReceiptTimeline(
+      [at("d1", "2026-07-21T09:00:00.000Z"), at("d2", "2026-07-21T11:00:00.000Z")],
+      [at("c1", "2026-07-21T10:00:00.000Z")],
+    );
+    expect(rows.map((r) => [r.kind, r.receipt.id])).toEqual([
+      ["delivered", "d2"],
+      ["returned", "c1"],
+      ["delivered", "d1"],
+    ]);
+  });
+
+  it("puts a same-instant return above the delivery it answers, then ties by id", () => {
+    const instant = "2026-07-21T10:00:00.000Z";
+    const rows = mergeReceiptTimeline([at("d1", instant)], [at("c1", instant)]);
+    expect(rows.map((r) => r.kind)).toEqual(["returned", "delivered"]);
+
+    const sameKind = mergeReceiptTimeline([at("d2", instant), at("d1", instant)], []);
+    expect(sameKind.map((r) => r.receipt.id)).toEqual(["d1", "d2"]);
   });
 });

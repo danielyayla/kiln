@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { HealthLevel, WorkOrderContext } from "@kiln/core";
+import type { CompletionReceipt, HealthLevel, WorkOrderContext } from "@kiln/core";
 import { api } from "../lib/client";
 import { diffLines } from "../lib/diff";
 import {
   contextDocs,
   contextVerdict,
   mapCheckTarget,
+  mergeReceiptTimeline,
   renderContextText,
   sectionDrift,
   totalChars,
@@ -158,11 +159,81 @@ function Section({
 
 type Receipt = { id: string; createdAt: string; hash: string; context: WorkOrderContext };
 
-// The forensic view (redesigned in Phase 17): a newest-first handoff timeline.
-// Click a handoff to compare it with now — the Phase 13 glance-chip question —
-// or shift-click to set the other end and compare any two points. A
+// A completion receipt in the timeline — the return half of a handoff. Display
+// only: completion receipts don't diff, so the card is never a compare point.
+function ReturnedCard({ receipt }: { receipt: CompletionReceipt }) {
+  const testimony = [
+    receipt.branch ? `branch ${receipt.branch}` : null,
+    receipt.commits.length > 0 ? `commits ${receipt.commits.join(", ")}` : null,
+    receipt.filesTouched.length > 0 ? `files ${receipt.filesTouched.join(", ")}` : null,
+  ].filter(Boolean);
+  return (
+    <div
+      data-testid={`completion-receipt-${receipt.id}`}
+      style={{
+        padding: `${space(1.5)}px ${space(2)}px`,
+        background: color.surface,
+        border: `1px solid ${color.border}`,
+        borderLeft: `3px solid ${color.ok}`,
+        borderRadius: radius.sm,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", gap: space(1.5) }}>
+        <span style={{ fontSize: font.xs, fontWeight: 700, color: color.ok, whiteSpace: "nowrap" }}>✓ returned</span>
+        <span style={{ fontSize: font.xs, color: color.muted, whiteSpace: "nowrap" }}>{timeAgo(receipt.createdAt)}</span>
+      </div>
+      <p style={{ margin: `${space(1)}px 0 0`, fontSize: font.sm, color: color.text, whiteSpace: "pre-wrap" }}>
+        {receipt.summary}
+      </p>
+      <pre
+        style={{
+          margin: `${space(1)}px 0 0`,
+          padding: `${space(1)}px ${space(1.5)}px`,
+          background: color.inset,
+          border: `1px solid ${color.border}`,
+          borderRadius: radius.sm,
+          fontFamily: "ui-monospace, monospace",
+          fontSize: font.xs,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          maxHeight: 180,
+          overflowY: "auto",
+        }}
+      >
+        {receipt.verification}
+      </pre>
+      {testimony.length > 0 && (
+        <p
+          style={{
+            margin: `${space(1)}px 0 0`,
+            fontSize: font.xs,
+            fontFamily: "ui-monospace, monospace",
+            color: color.muted,
+            overflowWrap: "anywhere",
+          }}
+        >
+          {testimony.join(" · ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// The forensic view (redesigned in Phase 17): a newest-first handoff timeline
+// carrying the full loop — deliveries (context receipts) interleaved with
+// returns (completion receipts). Click a delivery to compare it with now — the
+// Phase 13 glance-chip question — or shift-click to set the other end and
+// compare any two points; returned cards display, they never diff. A
 // section-level drift summary answers most investigations before the raw diff.
-function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; receipts: Receipt[] }) {
+function ReceiptHistory({
+  current,
+  receipts,
+  completions,
+}: {
+  current: WorkOrderContext;
+  receipts: Receipt[];
+  completions: CompletionReceipt[];
+}) {
   // Receipts arrive oldest-first (insertion order); the timeline reads newest-first.
   const newestFirst = useMemo(() => [...receipts].reverse(), [receipts]);
   const items = useMemo(
@@ -183,8 +254,10 @@ function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; rece
     [current, newestFirst],
   );
   // Default: latest handoff → now ("has it changed since the agent got it?").
+  // `latest` is undefined when only completion receipts exist — the diff
+  // machinery then idles on current vs current and stays hidden below.
   const latest = newestFirst[0];
-  const [fromKey, setFromKey] = useState(latest.id);
+  const [fromKey, setFromKey] = useState(latest?.id ?? "current");
   const [toKey, setToKey] = useState("current");
   const from = items.find((i) => i.key === fromKey) ?? items[items.length - 1];
   const to = items.find((i) => i.key === toKey) ?? items[0];
@@ -194,10 +267,15 @@ function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; rece
       setToKey(key);
     } else {
       // The common case: this point vs now. Clicking "now" resets the default.
-      setFromKey(key === "current" ? latest.id : key);
+      setFromKey(key === "current" ? (latest?.id ?? "current") : key);
       setToKey("current");
     }
   };
+
+  // One merged loop, newest-first: deliveries stay clickable compare points;
+  // returns render as display-only cards between them.
+  const rows = useMemo(() => mergeReceiptTimeline(receipts, completions), [receipts, completions]);
+  const itemByKey = useMemo(() => new Map(items.map((i) => [i.key, i])), [items]);
 
   const drift = useMemo(() => sectionDrift(from.ctx, to.ctx), [from, to]);
   const changed = drift.filter((d) => d.kind !== "unchanged");
@@ -224,12 +302,21 @@ function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; rece
   return (
     <div>
       <p style={{ margin: `0 0 ${space(2)}px`, fontSize: font.xs, color: color.faint }}>
-        {receipts.length} recorded handoff{receipts.length === 1 ? "" : "s"} — click one to compare with now,
-        shift-click to set the other end.
+        {receipts.length} deliver{receipts.length === 1 ? "y" : "ies"} · {completions.length} return
+        {completions.length === 1 ? "" : "s"}
+        {receipts.length > 0 ? " — click a delivery to compare with now, shift-click to set the other end." : "."}
       </p>
 
       <ol data-testid="receipt-timeline" style={{ listStyle: "none", margin: `0 0 ${space(3)}px`, padding: 0, display: "grid", gap: 2 }}>
-        {items.map((item) => {
+        {(receipts.length > 0 ? [items[0], ...rows] : rows).map((entry) => {
+          if ("kind" in entry && entry.kind === "returned") {
+            return (
+              <li key={entry.receipt.id}>
+                <ReturnedCard receipt={entry.receipt} />
+              </li>
+            );
+          }
+          const item = "kind" in entry ? itemByKey.get(entry.receipt.id)! : entry;
           const isFrom = item.key === from.key;
           const isTo = item.key === to.key;
           return (
@@ -272,6 +359,8 @@ function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; rece
         })}
       </ol>
 
+      {receipts.length > 0 && (
+      <>
       <div data-testid="drift-summary" style={{ marginBottom: space(2) }}>
         {changed.length === 0 ? (
           <p style={{ margin: 0, fontSize: font.sm, color: color.ok }}>
@@ -319,6 +408,8 @@ function ReceiptHistory({ current, receipts }: { current: WorkOrderContext; rece
           </div>
         ))}
       </pre>
+      </>
+      )}
     </div>
   );
 }
@@ -336,6 +427,10 @@ export function ContextInspector({ entityId }: { entityId: string }) {
   const health = useQuery({ queryKey: ["context-health", entityId], queryFn: () => api.contextHealth(entityId) });
   const deps = useQuery({ queryKey: ["linked", entityId, "depends_on"], queryFn: () => api.linked(entityId, "depends_on") });
   const receipts = useQuery({ queryKey: ["context-receipts", entityId], queryFn: () => api.contextReceipts(entityId) });
+  const completions = useQuery({
+    queryKey: ["completion-receipts", entityId],
+    queryFn: () => api.completionReceipts(entityId),
+  });
   // Blocked-ness comes from the same bulk readiness the board renders (WO-B2),
   // so dependency state reads identically everywhere. Quiet on failure: no
   // data -> empty set -> today's plain rendering.
@@ -378,7 +473,7 @@ export function ContextInspector({ entityId }: { entityId: string }) {
 
   const checks = [...(health.data?.checks ?? [])].sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
   const verdict = health.data ? contextVerdict(health.data.checks) : null;
-  const receiptCount = receipts.data?.length ?? 0;
+  const receiptCount = (receipts.data?.length ?? 0) + (completions.data?.length ?? 0);
 
   const docRow = (doc: ContextDoc, indent = false) => (
     <DocRow
@@ -444,7 +539,7 @@ export function ContextInspector({ entityId }: { entityId: string }) {
             No handoffs recorded yet — a coding agent fetching this work order over MCP records one.
           </p>
         ) : (
-          <ReceiptHistory current={c} receipts={receipts.data as Receipt[]} />
+          <ReceiptHistory current={c} receipts={(receipts.data ?? []) as Receipt[]} completions={completions.data ?? []} />
         )
       ) : (
         <>

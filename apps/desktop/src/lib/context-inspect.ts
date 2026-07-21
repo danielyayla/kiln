@@ -158,6 +158,29 @@ export function sectionDrift(a: WorkOrderContext, b: WorkOrderContext): SectionD
   return drift;
 }
 
+// The receipts tab's merged handoff loop: deliveries (context receipts) and
+// returns (completion receipts) in one newest-first timeline. Same-instant
+// ties read reverse-chronologically — the return sits above the delivery it
+// answers — then break by id so reruns are stable.
+export type ReceiptTimelineRow<D, R> =
+  | { kind: "delivered"; at: string; receipt: D }
+  | { kind: "returned"; at: string; receipt: R };
+
+export function mergeReceiptTimeline<
+  D extends { id: string; createdAt: string },
+  R extends { id: string; createdAt: string },
+>(delivered: D[], returned: R[]): ReceiptTimelineRow<D, R>[] {
+  const rows: ReceiptTimelineRow<D, R>[] = [
+    ...delivered.map((r) => ({ kind: "delivered" as const, at: r.createdAt, receipt: r })),
+    ...returned.map((r) => ({ kind: "returned" as const, at: r.createdAt, receipt: r })),
+  ];
+  return rows.sort(
+    (a, b) =>
+      b.at.localeCompare(a.at) ||
+      (a.kind === b.kind ? a.receipt.id.localeCompare(b.receipt.id) : a.kind === "returned" ? -1 : 1),
+  );
+}
+
 // The verdict the banner renders: info-level checks alone still read as ready.
 export function contextVerdict(checks: HealthCheck[]): { ready: boolean; errors: number; warnings: number } {
   const errors = checks.filter((c) => c.level === "error").length;

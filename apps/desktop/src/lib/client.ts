@@ -4,6 +4,7 @@
 import type {
   ActivityEvent,
   AuthoringSkillDoc,
+  CompletionReceipt,
   ContextHealth,
   ContextReceipt,
   DocumentHealth,
@@ -132,6 +133,7 @@ export const api = {
   documentHealth: (id: string) => request<DocumentHealth>(`/entities/${id}/health`),
   contextReceipts: (id: string) =>
     request<(ContextReceipt & { context: WorkOrderContext })[]>(`/entities/${id}/context/receipts`),
+  completionReceipts: (id: string) => request<CompletionReceipt[]>(`/entities/${id}/completion-receipts`),
   link: (fromId: string, toId: string, type: LinkType) =>
     request<{ ok: boolean }>("/links", { method: "POST", body: JSON.stringify({ fromId, toId, type }) }),
   suggestions: (entityId: string) => request<Suggestion[]>(`/entities/${entityId}/suggestions`),

@@ -454,6 +454,33 @@ describe("sidecar API", () => {
     expect(store.listContextReceipts(wo.id)).toHaveLength(before);
   });
 
+  it("serves completion receipts, [] for ids without any", async () => {
+    const req = store.createEntity({ type: "requirement", title: "R", body: "intent" });
+    const wo = store.createEntity({ type: "work_order", title: "W", body: "do it", status: "done" });
+
+    store.saveCompletionReceipt({
+      id: "cr-1",
+      workOrderId: wo.id,
+      summary: "built it",
+      verification: "tests green",
+      commits: ["abc123"],
+      branch: "main",
+      filesTouched: ["src/a.ts"],
+      createdAt: "2026-07-21T10:00:00.000Z",
+    });
+
+    const listed = await json<{ id: string; workOrderId: string; summary: string }[]>(
+      await app.request(`/entities/${wo.id}/completion-receipts`),
+    );
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ id: "cr-1", workOrderId: wo.id, summary: "built it" });
+
+    // Consistent with /context/receipts: non-work-orders and unknown ids
+    // simply have no receipts.
+    expect(await json<unknown[]>(await app.request(`/entities/${req.id}/completion-receipts`))).toEqual([]);
+    expect(await json<unknown[]>(await app.request(`/entities/nope/completion-receipts`))).toEqual([]);
+  });
+
   it("gates draft→ready on completeness, with an explicit override", async () => {
     const bare = store.createEntity({ type: "work_order", title: "Bare", status: "draft", body: "just do it" });
 

@@ -383,6 +383,12 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
   app.get("/entities/:id/context/receipts", (c) =>
     c.json(store.listContextReceipts(c.req.param("id"))),
   );
+  // The return half of the handoff loop: completion receipts recorded when an
+  // agent closes the work order over MCP. Same contract as context receipts —
+  // read-only, [] for ids without any (including non-work-orders).
+  app.get("/entities/:id/completion-receipts", (c) =>
+    c.json(store.listCompletionReceipts(c.req.param("id"))),
+  );
 
   // Per-document authoring-standards checks (methodology layer 2). Read-only,
   // any entity type; reports, never blocks.
