@@ -168,11 +168,12 @@ export function knowledgeHealth(store: Store): KnowledgeHealth {
 
 // Activity timeline (BP-10 §1c): recent project events merged from records
 // Kiln already keeps — no new tables, no Store change. Entity creation,
-// committed revisions, and context receipts (real agent handoffs).
+// committed revisions, context receipts (real agent handoffs), and completion
+// receipts (what the agent handed back).
 
 export interface ActivityEvent {
   at: string;
-  kind: "created" | "revised" | "handoff";
+  kind: "created" | "revised" | "handoff" | "completed";
   entityId: Id;
   entityType: EntityType;
   title: string;
@@ -185,9 +186,12 @@ export function activityTimeline(store: Store, limit = 50): ActivityEvent[] {
       events.push({ at: e.createdAt, kind: "created", entityId: e.id, entityType: e.type, title: e.title });
       for (const r of store.listRevisions(e.id))
         events.push({ at: r.createdAt, kind: "revised", entityId: e.id, entityType: e.type, title: e.title });
-      if (e.type === "work_order")
+      if (e.type === "work_order") {
         for (const receipt of store.listContextReceipts(e.id))
           events.push({ at: receipt.createdAt, kind: "handoff", entityId: e.id, entityType: e.type, title: e.title });
+        for (const receipt of store.listCompletionReceipts(e.id))
+          events.push({ at: receipt.createdAt, kind: "completed", entityId: e.id, entityType: e.type, title: e.title });
+      }
     }
   }
   // Newest first; same-instant events break ties by (kind, entityId) so reruns

@@ -249,6 +249,32 @@ describe("projectPulse", () => {
     expect(events.every((e) => e.entityId === w.id && e.entityType === "work_order" && e.title === "W")).toBe(true);
   });
 
+  it("activityTimeline: merges completed events from completion receipts newest-first", () => {
+    const w = wo("W", "done");
+    store.saveContextReceipt({ id: "r-1", workOrderId: w.id, context: {}, hash: "h1", createdAt: "2020-01-01T00:00:00.000Z" });
+    store.saveCompletionReceipt({
+      id: "c-1",
+      workOrderId: w.id,
+      summary: "built it",
+      verification: "tests green",
+      commits: [],
+      filesTouched: [],
+      createdAt: "2020-06-01T00:00:00.000Z",
+    });
+
+    // Creation happens "now"; the receipts are backdated: the completed event
+    // lands between the creation and the earlier handoff, newest-first.
+    const events = activityTimeline(store);
+    expect(events.map((e) => e.kind)).toEqual(["created", "completed", "handoff"]);
+    expect(events[1]).toEqual({
+      at: "2020-06-01T00:00:00.000Z",
+      kind: "completed",
+      entityId: w.id,
+      entityType: "work_order",
+      title: "W",
+    });
+  });
+
   it("activityTimeline: breaks same-instant ties by kind then entityId", () => {
     const w = wo("W", "ready");
     // A handoff stamped at the exact creation instant: "created" sorts before "handoff".

@@ -338,6 +338,7 @@ const EVENT_GLYPH: Record<ActivityEvent["kind"], { glyph: string; label: string 
   created: { glyph: "＋", label: "created" },
   revised: { glyph: "✎", label: "revised" },
   handoff: { glyph: "⇥", label: "handed to an agent" },
+  completed: { glyph: "✓", label: "completed by an agent" },
 };
 
 function ActivityRow({ event, onSelect }: { event: ActivityEvent; onSelect: (id: string) => void }) {
