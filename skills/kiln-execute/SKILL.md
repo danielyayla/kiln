@@ -106,10 +106,26 @@ surface, exercise it for real — don't stop at green unit tests.
 
 ### 7. Report and close
 
-`update_work_order_status { id, status: "done" }` — **only after verification
-passes**. Then report: what was built, how it was verified (with real output),
-and anything the human should review. If the human works review-gated, present
-first and let them tell you to close.
+`update_work_order_status { id, status: "done", report: { … } }` — **only
+after verification passes**, and the completion report travels **in the `done`
+call itself**. A `done` without a report is rejected and the order stays
+`in_progress`; with one, the report is recorded atomically with the transition
+as an immutable completion receipt (the result returns its
+`completionReceiptId`). Fill it honestly:
+
+- `summary` (required, non-blank) — what was built, in the work order's terms.
+- `verification` (required, non-blank) — how it was proven, **with real
+  output**: the actual test/typecheck results, the live check you ran.
+  "Tests pass" alone is not verification.
+- `commits`, `branch`, `filesTouched` (optional testimony) — the commits,
+  branch, and files of your change, recorded as given. Kiln never inspects the
+  repo; your testimony IS the execution record.
+
+Values are stored verbatim (whitespace-only fields are rejected, nothing is
+trimmed), so write for a reader with no chat history. Then tell the human the
+same things: what was built, how it was verified, anything to review. If the
+human works review-gated, present first and let them tell you to close — the
+report still rides the eventual `done` call.
 
 ## Failure paths
 
@@ -119,6 +135,13 @@ task. If already `in_progress`, leave it there and say why you stopped.
 
 **Verification fails** — do not mark `done`. Report the failing output
 honestly, keep the order `in_progress`, fix or ask.
+
+**Close rejected — missing or invalid completion report** — a `done` call
+without a `report`, with a blank `summary`/`verification`, or carrying a
+report on any transition other than `in_progress → done` is refused. The
+error names exactly what is wrong; no receipt is recorded and the status is
+unchanged. Fix the report and repeat the `done` call — never pad a field just
+to get past the gate.
 
 **Missing context** (`blueprint`/`requirement` null, `artifacts` empty) —
 proceed only if the work order body is self-contained enough to restate scope
@@ -145,3 +168,6 @@ statuses.
    pre-announce.
 2. The work order body is the scope. The rest of the payload is context.
 3. When unsure, stop and ask. An honest stall beats a confident wrong build.
+4. `done` always carries the completion report — a real summary and real
+   verification output. If you cannot fill it truthfully, the work is not
+   done.

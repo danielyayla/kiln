@@ -140,8 +140,8 @@ Ask the agent to work the board, or call the tools directly:
    | `dependencies` | `{ id, title, status }[]` | Its `depends_on` targets. If you were offered this order, they are all `done`. |
    | `lineage` | `{ requirement, artifacts, blueprint? }[]` | **Inherited intent** — ancestor requirements up the `child_of` chain (nearest first), each with the artifacts it references. An artifact referenced at multiple levels appears once, at the nearest. `[]` for a top-level requirement. This is how a deeply-nested work order still sees root-level intent (a kickoff transcript or PRD referenced high in the tree) without the child re-referencing it. `blueprint` (Phase 14) is that ancestor's `details` blueprint when one exists — absent otherwise. In a store with a product root, the LAST lineage entry is the product itself: its body is the Product Overview and its `blueprint` the system architecture. Read tier-wise: nearest entries are situational context; the root entry is BACKGROUND — skim it, never let it override the work order (see the kiln-execute skill's reading order). |
 3. Implement the work.
-4. **`update_work_order_status { id, status }`** — allowed transitions are
-   `draft→ready`, `ready→in_progress`, `in_progress→done`, and
+4. **`update_work_order_status { id, status, report? }`** — allowed transitions
+   are `draft→ready`, `ready→in_progress`, `in_progress→done`, and
    `any→cancelled`. Anything else is rejected with a message listing the
    allowed next states, e.g.:
 
@@ -152,12 +152,69 @@ Ask the agent to work the board, or call the tools directly:
    So the agent marks the order `in_progress` when it starts and `done` when it
    finishes.
 
+   **Closing `in_progress → done` REQUIRES a completion report** — the return
+   half of the handoff loop. The context receipt recorded at `get_work_order`
+   says what Kiln handed the agent; the completion receipt says what came
+   back, as an immutable, append-only record tied to the work order. The
+   `report` fields:
+
+   | Field | Shape | Required | What it is |
+   |---|---|---|---|
+   | `summary` | string | yes — non-blank | What was built. |
+   | `verification` | string | yes — non-blank | How it was proven, with real output (test results, live checks). |
+   | `commits` | string[] | no (defaults to `[]`) | Testimony: the commits carrying the work. Recorded as given, never verified against a repository. |
+   | `branch` | string | no | Testimony: the branch the work landed on. |
+   | `filesTouched` | string[] | no (defaults to `[]`) | Testimony: the files changed. |
+
+   The receipt is written atomically with the transition — both happen or
+   neither does — and the receipt's id comes back in the result. Output shape:
+   `{ workOrder, completionReceiptId? }`, where `completionReceiptId` is
+   present exactly when a report was recorded (i.e. on `in_progress → done`).
+   A compliant close:
+
+   ```json
+   {
+     "id": "3f6d21aa-…",
+     "status": "done",
+     "report": {
+       "summary": "Added the `completed` event kind to the Pulse activity timeline, sourced from completion receipts.",
+       "verification": "pnpm -C packages/core test — all suites pass, incl. 4 new cases in pulse.test.ts; live: closed a WO over MCP and saw the completed event on the Pulse feed.",
+       "commits": ["a1b2c3d Surface completed handoffs in Pulse"],
+       "branch": "main",
+       "filesTouched": ["packages/core/src/graph/pulse.ts", "packages/core/src/graph/pulse.test.ts"]
+     }
+   }
+   ```
+
+   The failure modes are loud, and none of them changes the status or records
+   a receipt:
+
+   - **`done` without a report:**
+
+     ```
+     Closing in_progress → done requires a completion report. Missing: report.summary (what was built) and report.verification (how it was proven, with real output). Optional testimony: report.commits, report.branch, report.filesTouched. The status is unchanged.
+     ```
+
+   - **A report on any other transition** (it travels only on the close):
+
+     ```
+     A completion report is only accepted when closing in_progress → done; this is ready → in_progress. No receipt was recorded and the status is unchanged.
+     ```
+
+   - **A blank field** — empty and whitespace-only `summary`/`verification`
+     are rejected (values are stored verbatim, never trimmed):
+
+     ```
+     Invalid completion report — no receipt recorded, status unchanged: report.summary: summary must not be empty or whitespace-only
+     ```
+
 ## 5. Install the execution skill
 
 The repo ships a skill that teaches a coding agent the execute-a-work-order
 procedure — pick only unblocked ready orders, read the full context, restate
 scope, implement, verify against the acceptance criteria, and keep status
-discipline (`in_progress` on pickup, `done` only after verification):
+discipline (`in_progress` on pickup, `done` only after verification, with the
+completion report carried in the `done` call itself):
 [`skills/kiln-execute/SKILL.md`](../skills/kiln-execute/SKILL.md).
 
 **Claude Code** — copy it where the agent discovers skills, either per-project
