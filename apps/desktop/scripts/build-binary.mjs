@@ -21,7 +21,10 @@ const OUT_DIR = join(HERE, "dist-binary");
 const BLOB = join(OUT_DIR, "sea-blob.blob");
 const BUNDLE = join(OUT_DIR, "binary.cjs");
 const NAME = "kiln-sidecar";
-const BIN = join(OUT_DIR, NAME);
+// Windows: executables need the .exe suffix (and the Tauri bundler requires it
+// on the target-triple copy below).
+const EXE = platform() === "win32" ? ".exe" : "";
+const BIN = join(OUT_DIR, NAME + EXE);
 
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { stdio: "inherit", ...opts });
@@ -60,7 +63,8 @@ const postjectArgs = [
   "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
 ];
 if (os === "darwin") postjectArgs.push("--macho-segment-name", "NODE_SEA");
-run("npx", ["--yes", ...postjectArgs]);
+// npx is npx.cmd on Windows; spawnSync only resolves it through a shell.
+run("npx", ["--yes", ...postjectArgs], { shell: os === "win32" });
 
 // 6. Ad-hoc re-sign on macOS so the OS will run it.
 if (os === "darwin") {
@@ -81,7 +85,7 @@ const triple = rustc
   : undefined;
 if (triple) {
   mkdirSync(join(HERE, "src-tauri", "binaries"), { recursive: true });
-  const tauriBin = join(HERE, "src-tauri", "binaries", `${NAME}-${triple}`);
+  const tauriBin = join(HERE, "src-tauri", "binaries", `${NAME}-${triple}${EXE}`);
   copyFileSync(BIN, tauriBin);
   if (os === "darwin") run("codesign", ["--force", "--sign", "-", tauriBin]);
   console.log(`\n✓ ${BIN}\n✓ ${tauriBin} (Tauri externalBin)`);
