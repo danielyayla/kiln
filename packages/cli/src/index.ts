@@ -22,6 +22,7 @@ export * from "./commands.js";
 const USAGE = `kiln — authoring CLI (store: KILN_DB_PATH, default ~/.kiln/kiln.db)
 
   kiln create <type> <title> [--body <text>]     create an entity (${"artifact|requirement|blueprint|work_order"})
+              [--work-type <wt>]                 work orders only: ${"feature|bug|refactor|perf|chore"}
   kiln link <fromId> <toId> <linkType>           add a typed edge
   kiln draft <entityId>                          draft a requirement/blueprint from its artifacts (needs model access)
   kiln suggestions <entityId>                    list pending suggestions for an entity
@@ -124,9 +125,10 @@ async function main(): Promise<void> {
     switch (command) {
       case "create": {
         const body = flagValue(args, "--body") ?? "";
+        const workType = flagValue(args, "--work-type");
         const [type, title] = args;
-        if (!type || !title) fail("usage: kiln create <type> <title> [--body <text>]");
-        printEntity("created", runCreate(store, type, title, body));
+        if (!type || !title) fail("usage: kiln create <type> <title> [--body <text>] [--work-type <type>]");
+        printEntity("created", runCreate(store, type, title, body, workType));
         break;
       }
       case "link": {

@@ -38,6 +38,7 @@ function frontMatter(store: Store, entity: Entity): string {
     `title: ${yamlString(entity.title)}`,
   ];
   if (entity.status !== null) lines.push(`status: ${entity.status}`);
+  if (entity.workType != null) lines.push(`workType: ${entity.workType}`);
 
   const linkLines: string[] = [];
   for (const type of LINK_TYPES) {

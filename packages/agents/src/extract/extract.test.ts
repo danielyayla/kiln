@@ -35,8 +35,16 @@ function scriptedProvider(inputs: unknown[]): { provider: ModelProvider; request
 
 const CANDIDATES = {
   candidates: [
-    { title: "Build the store layer", body: "Implement the Store interface. Done when CRUD tests pass." },
-    { title: "Wire the MCP bridge", body: "Expose the three tools over MCP. Done when a client lists them." },
+    {
+      title: "Build the store layer",
+      body: "Implement the Store interface. Done when CRUD tests pass.",
+      workType: "feature" as const,
+    },
+    {
+      title: "Wire the MCP bridge",
+      body: "Expose the three tools over MCP. Done when a client lists them.",
+      workType: "feature" as const,
+    },
   ],
 };
 
@@ -159,6 +167,45 @@ describe("acceptCandidate", () => {
     expect(() => acceptCandidate(store, "missing", CANDIDATES.candidates[0])).toThrow(NotFoundError);
     const artifact = store.createEntity({ type: "artifact", title: "A" });
     expect(() => acceptCandidate(store, artifact.id, CANDIDATES.candidates[0])).toThrow(ConstraintError);
+  });
+});
+
+describe("work types", () => {
+  it("the emit tool schema requires workType from the closed set", () => {
+    const item = (EMIT_WORK_ORDERS_TOOL.inputSchema as { properties: { candidates: { items: any } } })
+      .properties.candidates.items;
+    expect(item.required).toContain("workType");
+    expect(item.properties.workType.enum).toEqual(["feature", "bug", "refactor", "perf", "chore"]);
+  });
+
+  it("the prompt explains the closed set with the feature default", () => {
+    const { system } = buildExtractPrompt(blueprint);
+    for (const t of ["feature", "bug", "refactor", "perf", "chore"]) {
+      expect(system).toContain(`"${t}"`);
+    }
+    expect(system).toContain("workType");
+  });
+
+  it("returns emitted workTypes and rejects values outside the closed set", async () => {
+    const bad = { candidates: [{ title: "Fix crash", body: "b", workType: "urgent" }] };
+    const typed = { candidates: [{ title: "Fix crash", body: "b", workType: "bug" }] };
+    const { provider, requests } = scriptedProvider([bad, typed]);
+
+    const candidates = await extractWorkOrders(provider, blueprint);
+
+    expect(candidates[0].workType).toBe("bug");
+    expect(requests).toHaveLength(2);
+    expect(requests[1].messages.at(-1)?.content).toContain("rejected");
+  });
+
+  it("acceptCandidate persists the workType on the created work order", () => {
+    const wo = acceptCandidate(store, blueprint.id, { title: "Fix crash", body: "b", workType: "bug" });
+    expect(store.getEntity(wo.id)?.workType).toBe("bug");
+  });
+
+  it("a candidate without a workType lands as an explicit feature", () => {
+    const wo = acceptCandidate(store, blueprint.id, { title: "T", body: "b" });
+    expect(store.getEntity(wo.id)?.workType).toBe("feature");
   });
 });
 

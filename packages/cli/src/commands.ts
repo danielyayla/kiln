@@ -15,6 +15,7 @@ import {
   seedProject,
   SqliteStore,
   WORK_ORDER_STATUSES,
+  WORK_TYPES,
   writeRegistry,
   type Entity,
   type EntityType,
@@ -25,6 +26,7 @@ import {
   type Store,
   type Suggestion,
   type WorkOrderStatus,
+  type WorkType,
 } from "@kiln/core";
 import {
   acceptCandidate,
@@ -55,11 +57,22 @@ export function runCreate(
   type: string,
   title: string,
   body = "",
+  workType?: string,
 ): Entity {
   if (!(ENTITY_TYPES as readonly string[]).includes(type)) {
     throw new ConstraintError(`unknown entity type "${type}" (expected: ${ENTITY_TYPES.join(", ")})`);
   }
-  return store.createEntity({ type: type as EntityType, title, body });
+  if (workType !== undefined && !(WORK_TYPES as readonly string[]).includes(workType)) {
+    throw new ConstraintError(`unknown work type "${workType}" (expected: ${WORK_TYPES.join(", ")})`);
+  }
+  // The store enforces work_order-only, so --work-type on another entity type
+  // surfaces as its ConstraintError.
+  return store.createEntity({
+    type: type as EntityType,
+    title,
+    body,
+    ...(workType !== undefined ? { workType: workType as WorkType } : {}),
+  });
 }
 
 export function runLink(store: Store, fromId: Id, toId: Id, type: string): void {

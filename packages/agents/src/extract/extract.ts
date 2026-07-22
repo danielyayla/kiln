@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   ConstraintError,
   NotFoundError,
+  WORK_TYPES,
   type AuthoringSkill,
   type Entity,
   type Id,
@@ -10,11 +11,15 @@ import {
 import type { Message, ModelProvider, Tool } from "../model/index.js";
 import { templateSectionFromSkills } from "../draft/templates.js";
 
-// A proposed unit of work pulled out of a blueprint (BP-4): title + body.
-// Candidates are proposals — nothing touches the store until one is accepted.
+// A proposed unit of work pulled out of a blueprint (BP-4): title + body +
+// work type. Candidates are proposals — nothing touches the store until one
+// is accepted. The tool schema requires workType, so extraction always
+// classifies; the default only covers hand-built candidates on the accept
+// path (e.g. the sidecar route), matching the effective-type default.
 export const WorkOrderCandidate = z.object({
   title: z.string().min(1),
   body: z.string().min(1),
+  workType: z.enum(WORK_TYPES).default("feature"),
 });
 export type WorkOrderCandidate = z.infer<typeof WorkOrderCandidate>;
 
@@ -38,8 +43,14 @@ export const EMIT_WORK_ORDERS_TOOL: Tool = {
               description:
                 "What to build and how to verify it is done, self-contained enough for a coding agent.",
             },
+            workType: {
+              type: "string",
+              enum: [...WORK_TYPES],
+              description:
+                "The kind of work this candidate is. Default to \"feature\" when unsure.",
+            },
           },
-          required: ["title", "body"],
+          required: ["title", "body", "workType"],
           additionalProperties: false,
         },
       },
@@ -87,6 +98,7 @@ ${skills.map((s) => `## ${s.title}\n${s.body}`).join("\n\n")}`;
 Rules:
 - Each candidate must be a coherent, self-contained unit — one seam of the blueprint, not a sliver of one.
 - Order candidates so earlier ones unblock later ones.
+- Classify each candidate's workType from the closed set: "feature" (delivers new capability), "bug" (fixes a defect), "refactor" (restructures without behavior change), "perf" (improves performance), "chore" (mechanical upkeep). Default to "feature" when unsure.
 ${shapeRule}
 - Emit the candidates via the emit_work_orders tool.${skillsBlock}`;
 
@@ -159,7 +171,11 @@ export async function extractWorkOrders(
 // Accepting a candidate is what makes it real: a `work_order` entity in
 // `draft` status, linked implements → blueprint so context assembly can walk
 // back to the intent chain.
-export function acceptCandidate(store: Store, blueprintId: Id, candidate: WorkOrderCandidate): Entity {
+export function acceptCandidate(
+  store: Store,
+  blueprintId: Id,
+  candidate: z.input<typeof WorkOrderCandidate>,
+): Entity {
   const data = WorkOrderCandidate.parse(candidate);
   const blueprint = store.getEntity(blueprintId);
   if (!blueprint) throw new NotFoundError(blueprintId);
@@ -172,6 +188,7 @@ export function acceptCandidate(store: Store, blueprintId: Id, candidate: WorkOr
     title: data.title,
     body: data.body,
     status: "draft",
+    workType: data.workType,
   });
   store.link(workOrder.id, blueprintId, "implements");
   return store.getEntity(workOrder.id)!;

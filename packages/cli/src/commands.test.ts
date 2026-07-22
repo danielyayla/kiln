@@ -45,6 +45,14 @@ describe("create / link / status", () => {
     expect(() => runCreate(store, "widget", "W")).toThrow(ConstraintError);
   });
 
+  it("creates a typed work order and rejects work types outside the closed set", () => {
+    const wo = runCreate(store, "work_order", "W", "", "bug");
+    expect(store.getEntity(wo.id)?.workType).toBe("bug");
+    expect(() => runCreate(store, "work_order", "W2", "", "urgent")).toThrow(ConstraintError);
+    // The store's work_order-only constraint surfaces through runCreate.
+    expect(() => runCreate(store, "requirement", "R", "", "bug")).toThrow(ConstraintError);
+  });
+
   it("links entities and rejects unknown link types", () => {
     const a = runCreate(store, "requirement", "R");
     const b = runCreate(store, "artifact", "A");

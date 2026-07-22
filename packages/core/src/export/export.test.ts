@@ -69,6 +69,14 @@ describe("exportGraph layout", () => {
     expect(artFile.contents.endsWith("---\n")).toBe(true);
   });
 
+  it("writes workType in front-matter for typed work orders and omits it when unset", () => {
+    const typed = store.createEntity({ type: "work_order", title: "Typed", body: "x", status: "draft", workType: "bug" });
+    const untyped = store.createEntity({ type: "work_order", title: "Untyped", body: "x", status: "draft" });
+
+    expect(byPath(`unfiled/typed-${short(typed.id)}.md`).contents).toContain("workType: bug");
+    expect(byPath(`unfiled/untyped-${short(untyped.id)}.md`).contents).not.toContain("workType:");
+  });
+
   it("exports unplaced entities under unfiled/ so nothing is silently dropped", () => {
     // A blueprint detailing nothing and a work order implementing nothing.
     const bp = store.createEntity({ type: "blueprint", title: "Loose Design", body: "x" });
