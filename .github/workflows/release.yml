@@ -21,7 +21,9 @@ jobs:
         include:
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
+          # Intel runner, not a cross-target from ARM: the sidecar is a Node
+          # SEA built from the host's node binary, so host arch must match.
+          - platform: macos-13
             args: "--target x86_64-apple-darwin"
           - platform: windows-latest
             args: ""

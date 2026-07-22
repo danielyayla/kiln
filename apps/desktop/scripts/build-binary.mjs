@@ -13,8 +13,10 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { platform } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const HERE = new URL("..", import.meta.url).pathname;
+// URL.pathname renders Windows paths as /D:/… — fileURLToPath is portable.
+const HERE = fileURLToPath(new URL("..", import.meta.url));
 const OUT_DIR = join(HERE, "dist-binary");
 const BLOB = join(OUT_DIR, "sea-blob.blob");
 const BUNDLE = join(OUT_DIR, "binary.cjs");
