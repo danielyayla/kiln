@@ -4,6 +4,7 @@ export * from "./document-health";
 export * from "./drift";
 export * from "./health";
 export * from "./overlays";
+export * from "./proposal";
 export * from "./pulse";
 export * from "./readiness";
 export * from "./ready-gate";
