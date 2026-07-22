@@ -12,6 +12,7 @@ import { XRayView } from "./components/XRayView";
 import { PulseView } from "./components/PulseView";
 import { SettingsView } from "./components/SettingsView";
 import { TopBar, type View } from "./components/TopBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { Button, Input, ToastProvider, useToast } from "./components/ui";
 import { color, font, space } from "./theme";
 
@@ -92,6 +93,7 @@ export function App() {
   return (
     <ToastProvider>
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+        <UpdateBanner />
         <TopBar
           view={view}
           onViewChange={setView}
