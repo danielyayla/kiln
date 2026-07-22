@@ -15,10 +15,13 @@ blueprint that designed it, the requirement that motivated it, and the source
 artifacts behind that requirement. Your job is to implement exactly that unit,
 verify it, and report status back — nothing more.
 
-The whole tool surface is three calls:
+Your whole tool surface is three calls:
 `list_ready_work_orders` → `get_work_order` → `update_work_order_status`.
-You never write documents through MCP; Kiln documents change only through
-suggestions inside the Kiln app.
+As an execution agent you never author or edit Kiln documents — every Kiln
+document changes only through suggestions a human resolves. The one document
+write that exists over MCP, `propose_feature`, is a gated proposal surface
+for survey agents (see the kiln-survey skill), and it is no part of this
+loop: do not call it while executing a work order.
 
 **Which project are you working in?** Kiln holds multiple isolated projects
 (one store each); the MCP server binds to exactly ONE, resolved once at its

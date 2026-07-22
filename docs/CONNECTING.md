@@ -3,6 +3,9 @@
 How to run the Kiln MCP server and drive the work-order loop from Claude Code
 (or any MCP client that speaks streamable HTTP). This is the Phase-1 loop:
 `list_ready_work_orders` → `get_work_order` → implement → `update_work_order_status`.
+A fourth tool, `propose_feature` (§5), is the survey surface — the ONLY
+document write that exists over MCP, and it is gated: proposals land as
+pending suggestions a human resolves in the app.
 
 ## 1. Build and seed
 
@@ -97,9 +100,9 @@ claude mcp list
 # kiln: http://127.0.0.1:3777/mcp (HTTP) - ✔ Connected
 ```
 
-Then start `claude` in your project. The three tools appear as
-`mcp__kiln__list_ready_work_orders`, `mcp__kiln__get_work_order`, and
-`mcp__kiln__update_work_order_status`.
+Then start `claude` in your project. The four tools appear as
+`mcp__kiln__list_ready_work_orders`, `mcp__kiln__get_work_order`,
+`mcp__kiln__update_work_order_status`, and `mcp__kiln__propose_feature`.
 
 Other MCP clients: any client that supports streamable HTTP works the same way —
 point it at the URL and supply the `Authorization` header. With the TypeScript
@@ -211,7 +214,91 @@ Ask the agent to work the board, or call the tools directly:
      Invalid completion report — no receipt recorded, status unchanged: report.summary: summary must not be empty or whitespace-only
      ```
 
-## 5. Install the execution skill
+## 5. Propose features — the gated document write
+
+`propose_feature` exists for **survey agents** bootstrapping a brownfield
+repository into a fresh Kiln project (the procedure lives in
+[`skills/kiln-survey/SKILL.md`](../skills/kiln-survey/SKILL.md)). It is the
+only document-write path over MCP, and it is deliberately **gated**: there
+are no ungated document writes. The invariant, precisely:
+
+> Document writes over MCP exist ONLY as gated proposals via
+> `propose_feature` — the proposed bodies land as pending suggestions a
+> human accepts or rejects in the app; nothing is committed by the call.
+> Execution agents (the kiln-execute loop) still never author documents.
+
+One call proposes ONE feature. Input:
+
+| Field | Shape | Required | What it is |
+|---|---|---|---|
+| `requirement` | `{ title, body }` | yes | The feature requirement, per the house template (Capability / Why / Scope / Non-goals / Success criteria). |
+| `blueprint` | `{ title, body }` | yes | Its blueprint, per the house template (Approach / Key decisions / Affected components / Conventions & constraints / Verification strategy). |
+| `evidence` | `{ title, body }[]` | yes — 1 to 20 | Evidence artifacts: repo-relative file paths, verbatim excerpts, and the surveyor's rationale. |
+| `parentRequirementId` | string | no | Parent for `child_of`. Omit for a feature directly under the product root — the single parentless requirement is resolved automatically. |
+
+A successful call creates, atomically (a mid-write failure compensates by
+deleting everything it created):
+
+- the requirement and blueprint as **empty-bodied** entities, linked
+  `child_of` → parent and `details` → requirement;
+- the proposed bodies as one **pending suggestion** per document — the gate;
+- the evidence artifacts with their bodies committed directly (read-only
+  source material), each `references`-linked from the requirement so context
+  assembly delivers the evidence to future work orders.
+
+Output shape: `{ requirementId, blueprintId, artifactIds, suggestionIds }`,
+where `suggestionIds` is `[requirement suggestion, blueprint suggestion]`.
+A compliant call:
+
+```json
+{
+  "requirement": {
+    "title": "Keto logging over MCP — log meals and meter readings from Claude",
+    "body": "## Capability\nA user logs food and readings from Claude…\n\n## Why\n…\n\n## Scope\n- Nine MCP tools registered on the Worker…\n\n## Non-goals\n- No food recognition on the server…\n\n## Success criteria\n- Calling log_food creates an entry visible in the web timeline…"
+  },
+  "blueprint": {
+    "title": "BP — MCP keto logging tools on the Worker",
+    "body": "## Approach\nEach tool is a module in mcp/tools/ registered by registerTools()…\n\n## Key decisions\n- **One Worker for app + MCP** — …\n\n## Affected components\n…\n\n## Conventions & constraints\n…\n\n## Verification strategy\n…"
+  },
+  "evidence": [
+    {
+      "title": "Survey evidence: MCP keto logging (mcp/register-tools.ts, README.md)",
+      "body": "**mcp/register-tools.ts** — nine tools registered centrally:\n```ts\nawait registerLogFoodTool(agent)\n…\n```\nRationale: the tool registry and README framing evidence a deliberate capability."
+    }
+  ]
+}
+```
+
+Proposals must be **born compliant** — every rejection happens at the tool
+boundary, names the offending document and check, and creates nothing. The
+validation failures are collected and returned together:
+
+```
+Proposal rejected — nothing was created:
+- evidence: at least one evidence artifact is required — a proposal without evidence is an invention
+- requirement: no Non-goals section (missing-non-goals) — every feature has adjacent scope it should decline
+- requirement: feature title must follow `<Name> — <plain-language description>` (feature-title-shape)
+```
+
+The full rejection catalog:
+
+| Rejection | Trigger |
+|---|---|
+| `<doc>: title is empty or whitespace-only` | Blank title on `requirement`, `blueprint`, or `evidence[i]`. |
+| `<doc>: title exceeds 200 characters (N)` | Title over the cap. |
+| `<doc>: body is empty or whitespace-only (empty-body)` | Blank body. |
+| `<doc>: body exceeds 20000 characters (N)` | Body over the cap. |
+| `evidence: at least one evidence artifact is required — a proposal without evidence is an invention` | `evidence: []`. |
+| `evidence: N artifacts exceed the cap of 20` | Too many evidence artifacts. |
+| `requirement: no Non-goals section (missing-non-goals) — …` | The health check: the requirement body has no `Non-goals` heading (any `#` level) — the same canonical-heading test `documentHealth` uses. |
+| ``requirement: feature title must follow `<Name> — <plain-language description>` (feature-title-shape)`` | Applies only when the parent is the product root: the title needs name, space, em-dash (—), space, description. |
+| `Parent requirement not found: <id>` | Explicit `parentRequirementId` doesn't exist. |
+| `Proposal parent <id> is a <type>, not a requirement` | Explicit parent is a blueprint/work order/artifact. |
+| `No product root: the store has no parentless requirement to attach this feature to. Pass parentRequirementId explicitly.` | Omitted parent in a store with no parentless requirement. |
+| `Ambiguous product root: N parentless requirements ("…", "…"). Pass parentRequirementId explicitly.` | Omitted parent with several parentless requirements — in a survey target this means the project is not fresh. |
+| `Proposal rejected — nothing was created: <message>` | Core's authoritative re-validation (typed constraint/not-found rejections, or a compensated mid-write failure). |
+
+## 6. Install the execution skill
 
 The repo ships a skill that teaches a coding agent the execute-a-work-order
 procedure — pick only unblocked ready orders, read the full context, restate
@@ -238,7 +325,7 @@ The agent then loads it whenever it works the Kiln board (the frontmatter
 syntax: paste it into `.cursor/rules/kiln-execute.mdc` (or your agent's
 equivalent rules file), dropping the YAML frontmatter.
 
-## 6. Authoring skills (customizable house standards)
+## 7. Authoring skills (customizable house standards)
 
 The AUTHORING agents (draft, extract, refine chat, review) — not the MCP
 execution loop — can be tuned per store with **authoring skills**:
