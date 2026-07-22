@@ -5,11 +5,13 @@ import type { HealthCheck } from "./health";
 
 // Drift checks (layer 2, reports-never-blocks): deterministic conditions
 // computed from records the store already keeps — revisions, completion
-// receipts, links, statuses. Revisions and receipts are the clocks: a document
+// receipts, links, statuses. Revisions and receipts are the clocks, but drift
+// is a content condition proven by them (BP amendment 2026-07-22): a document
 // "moved" when a revision landed strictly after the latest relevant completion
-// receipt. ISO-8601 strings compare lexically (as in pulse), and same-instant
-// timestamps are NOT drift — the receipt written atomically with a close must
-// never flag its own work order.
+// receipt AND its body still differs from what shipped. ISO-8601 strings
+// compare lexically (as in pulse), and same-instant timestamps are NOT drift —
+// the receipt written atomically with a close must never flag its own work
+// order.
 
 const effectiveStatus = (wo: Entity): WorkOrderStatus => wo.status ?? DEFAULT_STATUS;
 const isOpen = (s: WorkOrderStatus) => s === "draft" || s === "ready" || s === "in_progress";
@@ -22,6 +24,23 @@ const latestReceipt = (store: Store, workOrderId: string): CompletionReceipt | n
 
 const latestReceiptAt = (store: Store, workOrderId: string): string | null =>
   latestReceipt(store, workOrderId)?.createdAt ?? null;
+
+// Revisions are post-image snapshots (commitBody stores the new body), so the
+// shipped body is the latest snapshot at or before the ship time. A reverted
+// document matches it and is reconciled — the chip's "or revert it" remedy.
+// With no snapshot at or before the ship time the baseline is unknown
+// (pre-revision-era edits wrote bodies without snapshots) and the clock alone
+// decides.
+const movedSince = (store: Store, entity: Entity, shippedAt: string): boolean => {
+  const revisions = store.listRevisions(entity.id); // chronological (oldest first)
+  if (!revisions.some((r) => r.createdAt > shippedAt)) return false;
+  let shippedBody: string | null = null;
+  for (const r of revisions) {
+    if (r.createdAt > shippedAt) break;
+    shippedBody = r.body;
+  }
+  return shippedBody === null || entity.body !== shippedBody;
+};
 
 const blueprintIds = (store: Store, workOrderId: string): string[] =>
   store
@@ -44,7 +63,7 @@ export function driftChecks(store: Store, entity: Entity): HealthCheck[] {
         "done-without-receipt",
         "Done with no completion receipt — no execution record exists to drift against.",
       );
-    } else if (store.listRevisions(entity.id).some((r) => r.createdAt > receiptAt)) {
+    } else if (movedSince(store, entity, receiptAt)) {
       add(
         "warn",
         "revised-after-done",
@@ -85,7 +104,7 @@ export function driftChecks(store: Store, entity: Entity): HealthCheck[] {
         .filter((at): at is string => at !== null)
         .sort()
         .pop();
-      if (shippedAt && store.listRevisions(entity.id).some((r) => r.createdAt > shippedAt)) {
+      if (shippedAt && movedSince(store, entity, shippedAt)) {
         add(
           "warn",
           "amended-after-ship",

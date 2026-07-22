@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Entity } from "../domain";
 import { SqliteStore } from "../store/sqlite-store";
 import { driftChecks } from "./drift";
@@ -140,6 +140,75 @@ describe("amended-after-ship", () => {
     store.updateEntity(cancelled.id, { status: "cancelled" });
     store.commitBody(bp.id, "amended after ship");
     expect(codes(bp)).toContain("amended-after-ship");
+  });
+});
+
+describe("reconciliation is content, not clocks", () => {
+  // commitBody stamps the real clock, so these cases pin it with fake timers
+  // to place revisions on either side of the ship time deterministically.
+  const T0 = "2025-12-31T00:00:00.000Z";
+  const T3 = "2026-01-03T00:00:00.000Z";
+  const at = (iso: string) => vi.setSystemTime(new Date(iso));
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("clears amended-after-ship when the body is reverted to the ship-time snapshot", () => {
+    const bp = store.createEntity({ type: "blueprint", title: "BP", body: "x" });
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: "x" });
+    store.link(wo.id, bp.id, "implements");
+    store.updateEntity(wo.id, { status: "done" });
+    at(T1);
+    store.commitBody(bp.id, "shipped design");
+    receipt(wo.id, T1);
+    at(T2);
+    store.commitBody(bp.id, "amended after ship");
+    expect(codes(bp)).toContain("amended-after-ship");
+    at(T3);
+    store.commitBody(bp.id, "shipped design"); // the revert
+    expect(codes(bp)).toEqual([]);
+  });
+
+  it("clears revised-after-done when the body is reverted to the receipt-time snapshot", () => {
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: "x" });
+    store.updateEntity(wo.id, { status: "done" });
+    at(T1);
+    store.commitBody(wo.id, "shipped body");
+    receipt(wo.id, T1);
+    at(T2);
+    store.commitBody(wo.id, "revised after done");
+    expect(codes(wo)).toContain("revised-after-done");
+    at(T3);
+    store.commitBody(wo.id, "shipped body"); // the revert
+    expect(codes(wo)).toEqual([]);
+  });
+
+  it("compares against the LATEST snapshot at or before the ship time", () => {
+    const bp = store.createEntity({ type: "blueprint", title: "BP", body: "x" });
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: "x" });
+    store.link(wo.id, bp.id, "implements");
+    store.updateEntity(wo.id, { status: "done" });
+    at(T0);
+    store.commitBody(bp.id, "early draft");
+    at(T1);
+    store.commitBody(bp.id, "shipped design");
+    receipt(wo.id, T1);
+    at(T2);
+    store.commitBody(bp.id, "early draft"); // matches a snapshot, but not the shipped one
+    expect(codes(bp)).toContain("amended-after-ship");
+    at(T3);
+    store.commitBody(bp.id, "shipped design");
+    expect(codes(bp)).toEqual([]);
+  });
+
+  it("falls back to the clock alone when no snapshot exists at or before the ship time", () => {
+    // The creation body is never snapshotted, so a first-ever commit after the
+    // receipt has no baseline — it flags even if the body text is unchanged.
+    const wo = store.createEntity({ type: "work_order", title: "WO", body: "x" });
+    store.updateEntity(wo.id, { status: "done" });
+    receipt(wo.id, T1);
+    at(T2);
+    store.commitBody(wo.id, "x");
+    expect(codes(wo)).toContain("revised-after-done");
   });
 });
 
