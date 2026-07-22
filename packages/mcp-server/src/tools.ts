@@ -5,23 +5,29 @@ import {
   allowedNextStatuses,
   assembleWorkOrderContext,
   canTransition,
+  ConstraintError,
   readyGateBlockers,
   DEFAULT_STATUS,
   NotFoundError,
+  proposeFeature,
   readyWorkOrders,
   recordCompletionReceipt,
   recordContextReceipt,
+  rootRequirements,
   WORK_ORDER_STATUSES,
   workOrderDependencies,
   type CompletionReceipt,
+  type Entity,
   type Store,
   type WorkOrderStatus,
 } from "@kiln/core";
 import {
   completionReportSchema,
   entitySchema,
+  proposedDocumentSchema,
   readyWorkOrderSummarySchema,
   workOrderContextShape,
+  proposalResultShape,
 } from "./entity-schema.js";
 
 const SUMMARY_LENGTH = 200;
@@ -44,6 +50,66 @@ function ok(structuredContent: Record<string, unknown>): CallToolResult {
     content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
     structuredContent,
   };
+}
+
+// Size caps for propose_feature, enforced with named rejections and documented
+// in the tool description so agents see them before tripping them.
+const PROPOSAL_TITLE_CAP = 200;
+const PROPOSAL_BODY_CAP = 20_000;
+const PROPOSAL_EVIDENCE_CAP = 20;
+
+// Same canonical-heading test documentHealth uses (docs/authoring-methodology.md).
+const hasHeading = (body: string, title: string) =>
+  new RegExp(`^#{1,6}\\s*${title}\\b`, "im").test(body);
+
+interface ProposedDocument {
+  title: string;
+  body: string;
+}
+
+// Boundary validation for a proposed feature: caps and blank fields for every
+// document, plus the body-derivable selection of the blocking document-health
+// rules (the ready-gate pattern: a selection over documentHealth, not new
+// rules). Proposals must be born compliant — an ill-formed document is
+// rejected here, never pushed onto the human reviewer. Returns failure
+// messages naming the offending document; empty = pass.
+function proposalFailures(
+  requirement: ProposedDocument,
+  blueprint: ProposedDocument,
+  evidence: ProposedDocument[],
+  parentIsProductRoot: boolean,
+): string[] {
+  const failures: string[] = [];
+  const documents: Array<[string, ProposedDocument]> = [
+    ["requirement", requirement],
+    ["blueprint", blueprint],
+    ...evidence.map((e, i): [string, ProposedDocument] => [`evidence[${i}]`, e]),
+  ];
+  for (const [name, doc] of documents) {
+    if (doc.title.trim() === "") failures.push(`${name}: title is empty or whitespace-only`);
+    else if (doc.title.length > PROPOSAL_TITLE_CAP)
+      failures.push(`${name}: title exceeds ${PROPOSAL_TITLE_CAP} characters (${doc.title.length})`);
+    if (doc.body.trim() === "")
+      failures.push(`${name}: body is empty or whitespace-only (empty-body)`);
+    else if (doc.body.length > PROPOSAL_BODY_CAP)
+      failures.push(`${name}: body exceeds ${PROPOSAL_BODY_CAP} characters (${doc.body.length})`);
+  }
+  if (evidence.length === 0) {
+    failures.push("evidence: at least one evidence artifact is required — a proposal without evidence is an invention");
+  } else if (evidence.length > PROPOSAL_EVIDENCE_CAP) {
+    failures.push(`evidence: ${evidence.length} artifacts exceed the cap of ${PROPOSAL_EVIDENCE_CAP}`);
+  }
+  if (requirement.body.trim() !== "" && !hasHeading(requirement.body, "Non-goals")) {
+    failures.push(
+      "requirement: no Non-goals section (missing-non-goals) — every feature has adjacent scope it should decline",
+    );
+  }
+  if (parentIsProductRoot && !/^.+ — (.*\S.*)$/u.test(requirement.title)) {
+    failures.push(
+      "requirement: feature title must follow `<Name> — <plain-language description>` (feature-title-shape)",
+    );
+  }
+  return failures;
 }
 
 // Registers the three FRD-3 tools against a shared Store. Pure over the store:
@@ -180,6 +246,83 @@ export function registerTools(server: McpServer, store: Store): void {
       }
       const updated = store.updateEntity(id, { status });
       return ok({ workOrder: updated });
+    },
+  );
+
+  server.registerTool(
+    "propose_feature",
+    {
+      title: "Propose a feature for human review",
+      description:
+        "Propose ONE feature (per call) as a GATED write: creates an empty-bodied requirement and blueprint " +
+        "(linked child_of → parent and details → requirement) and files their proposed bodies as PENDING " +
+        "suggestions a human accepts or rejects in the Kiln app — nothing is committed by this call. Evidence " +
+        "artifacts are created with their bodies and references-linked from the requirement. This is the only " +
+        "document-write path over MCP, and it is deliberately gated: there are no UNGATED document writes. " +
+        "parentRequirementId is optional — when omitted, the single parentless product root is resolved " +
+        "automatically (none or several is an error). Caps: titles ≤ 200 chars, bodies ≤ 20,000 chars, " +
+        "1–20 evidence artifacts. Proposed documents must be born compliant: the requirement body needs a " +
+        "Non-goals section, and a feature proposed under the product root needs a " +
+        "'<Name> — <plain-language description>' title.",
+      inputSchema: {
+        requirement: proposedDocumentSchema,
+        blueprint: proposedDocumentSchema,
+        evidence: z.array(proposedDocumentSchema),
+        parentRequirementId: z.string().min(1).optional(),
+      },
+      outputSchema: proposalResultShape,
+    },
+    async ({ requirement, blueprint, evidence, parentRequirementId }) => {
+      // Resolve the parent before validating: the feature-title-shape rule
+      // applies only to features landing directly under the product root.
+      let parent: Entity;
+      if (parentRequirementId) {
+        const found = store.getEntity(parentRequirementId);
+        if (!found) return toolError(`Parent requirement not found: ${parentRequirementId}`);
+        if (found.type !== "requirement") {
+          return toolError(`Proposal parent ${parentRequirementId} is a ${found.type}, not a requirement`);
+        }
+        parent = found;
+      } else {
+        const roots = rootRequirements(store);
+        if (roots.length === 0) {
+          return toolError(
+            "No product root: the store has no parentless requirement to attach this feature to. " +
+              "Pass parentRequirementId explicitly.",
+          );
+        }
+        if (roots.length > 1) {
+          return toolError(
+            `Ambiguous product root: ${roots.length} parentless requirements ` +
+              `(${roots.map((r) => `"${r.title}"`).join(", ")}). Pass parentRequirementId explicitly.`,
+          );
+        }
+        parent = roots[0];
+      }
+      const parentIsProductRoot =
+        store.linked(parent.id, "child_of").length === 0 && rootRequirements(store).length === 1;
+
+      const failures = proposalFailures(requirement, blueprint, evidence, parentIsProductRoot);
+      if (failures.length > 0) {
+        return toolError(`Proposal rejected — nothing was created:\n- ${failures.join("\n- ")}`);
+      }
+
+      try {
+        const ids = proposeFeature(store, parent.id, { requirement, blueprint, evidence });
+        return ok({
+          requirementId: ids.requirementId,
+          blueprintId: ids.blueprintId,
+          artifactIds: ids.artifactIds,
+          suggestionIds: [ids.requirementSuggestionId, ids.blueprintSuggestionId],
+        });
+      } catch (err) {
+        // Core re-validates authoritatively; its typed rejections (and the
+        // compensated mid-write failure) surface as tool errors, not faults.
+        if (err instanceof ConstraintError || err instanceof NotFoundError) {
+          return toolError(`Proposal rejected — nothing was created: ${err.message}`);
+        }
+        throw err;
+      }
     },
   );
 }

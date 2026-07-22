@@ -55,6 +55,24 @@ export const readyWorkOrderSummarySchema = z.object({
   summary: z.string(),
 });
 
+// One proposed document in a `propose_feature` call: the title the entity is
+// created with and the body that lands as a pending suggestion (or, for
+// evidence, directly). Caps and health rules are enforced in the handler so
+// rejections can name the offending document.
+export const proposedDocumentSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().min(1),
+});
+
+// Output shape of `propose_feature`: every id the materialization created.
+// `suggestionIds` is [requirement suggestion, blueprint suggestion].
+export const proposalResultShape = {
+  requirementId: z.string(),
+  blueprintId: z.string(),
+  artifactIds: z.array(z.string()),
+  suggestionIds: z.array(z.string()),
+};
+
 // An agent's completion report — required when closing in_progress → done, the
 // return half of the handoff loop. Mirror of core's CompletionReport, which
 // re-validates authoritatively inside recordCompletionReceipt (rejecting

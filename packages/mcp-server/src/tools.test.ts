@@ -26,11 +26,12 @@ afterEach(async () => {
 });
 
 describe("MCP tools", () => {
-  it("lists all three tools", async () => {
+  it("lists all four tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "get_work_order",
       "list_ready_work_orders",
+      "propose_feature",
       "update_work_order_status",
     ]);
   });
@@ -355,5 +356,201 @@ describe("MCP tools", () => {
     expect(store.getEntity(chain.workOrderId)?.status).toBe("in_progress");
     vi.restoreAllMocks();
     expect(store.listCompletionReceipts(chain.workOrderId)).toEqual([]);
+  });
+});
+
+describe("propose_feature", () => {
+  const proposal = () => ({
+    requirement: {
+      title: "Search — find any document instantly",
+      body: "## Capability\nFull-text search.\n\n## Non-goals\n- No fuzzy matching.",
+    },
+    blueprint: { title: "BP — Search", body: "## Approach\nSQLite FTS5 behind the Store." },
+    evidence: [{ title: "src/search.ts excerpt", body: "export function search() {}" }],
+  });
+
+  // Everything a rejection must leave untouched: entity ids per type plus the
+  // link and suggestion counts.
+  const snapshot = () => ({
+    requirements: store.listEntities("requirement").map((e) => e.id).sort(),
+    blueprints: store.listEntities("blueprint").map((e) => e.id).sort(),
+    artifacts: store.listEntities("artifact").map((e) => e.id).sort(),
+    workOrders: store.listEntities("work_order").map((e) => e.id).sort(),
+    links: store.listLinks().length,
+  });
+
+  const call = (args: Record<string, unknown>) =>
+    client.callTool({ name: "propose_feature", arguments: args });
+
+  const errorText = (res: Awaited<ReturnType<typeof call>>) =>
+    (res.content as { text: string }[])[0].text;
+
+  it("creates the full gated shape under an explicit parent and returns every id", async () => {
+    const res = await call({ ...proposal(), parentRequirementId: chain.requirementId });
+    expect(res.isError).toBeFalsy();
+    const ids = res.structuredContent as {
+      requirementId: string;
+      blueprintId: string;
+      artifactIds: string[];
+      suggestionIds: string[];
+    };
+
+    const requirement = store.getEntity(ids.requirementId)!;
+    const blueprint = store.getEntity(ids.blueprintId)!;
+    expect(requirement.type).toBe("requirement");
+    expect(blueprint.type).toBe("blueprint");
+    // The gate property: nothing is committed — bodies stay empty, the
+    // proposed text is a pending suggestion, and no revision exists.
+    expect(requirement.body).toBe("");
+    expect(blueprint.body).toBe("");
+    expect(store.listRevisions(ids.requirementId)).toEqual([]);
+    expect(store.listRevisions(ids.blueprintId)).toEqual([]);
+
+    expect(store.linked(ids.requirementId, "child_of").map((e) => e.id)).toEqual([chain.requirementId]);
+    expect(store.linked(ids.blueprintId, "details").map((e) => e.id)).toEqual([ids.requirementId]);
+    expect(store.linked(ids.requirementId, "references").map((e) => e.id)).toEqual(ids.artifactIds);
+
+    // Evidence is ungated source material — its body lands directly.
+    expect(ids.artifactIds).toHaveLength(1);
+    expect(store.getEntity(ids.artifactIds[0])!.body).toBe("export function search() {}");
+
+    expect(ids.suggestionIds).toHaveLength(2);
+    const [reqSuggestion] = store.listSuggestions(ids.requirementId);
+    const [bpSuggestion] = store.listSuggestions(ids.blueprintId);
+    expect(reqSuggestion.id).toBe(ids.suggestionIds[0]);
+    expect(bpSuggestion.id).toBe(ids.suggestionIds[1]);
+    for (const [suggestion, body] of [
+      [reqSuggestion, proposal().requirement.body],
+      [bpSuggestion, proposal().blueprint.body],
+    ] as const) {
+      expect(suggestion.source).toBe("extract_agent");
+      expect(suggestion.ops).toEqual([{ kind: "insert", anchor: "", text: body }]);
+    }
+  });
+
+  it("resolves the single parentless root when parentRequirementId is omitted", async () => {
+    // Collapse the seeded store's two roots into one tree.
+    const [rootA, rootB] = store
+      .listEntities("requirement")
+      .filter((r) => store.linked(r.id, "child_of").length === 0);
+    store.link(rootB.id, rootA.id, "child_of");
+
+    const res = await call(proposal());
+    expect(res.isError).toBeFalsy();
+    const { requirementId } = res.structuredContent as { requirementId: string };
+    expect(store.linked(requirementId, "child_of").map((e) => e.id)).toEqual([rootA.id]);
+  });
+
+  it("rejects a missing product root loudly", async () => {
+    const empty = new SqliteStore(":memory:");
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const emptyClient = new Client({ name: "test-client-2", version: "0.0.0" });
+    await Promise.all([
+      buildMcpServer(empty).connect(serverTransport),
+      emptyClient.connect(clientTransport),
+    ]);
+    try {
+      const res = await emptyClient.callTool({ name: "propose_feature", arguments: proposal() });
+      expect(res.isError).toBe(true);
+      expect((res.content as { text: string }[])[0].text).toContain("No product root");
+      expect(empty.listEntities("requirement")).toEqual([]);
+    } finally {
+      await emptyClient.close();
+      empty.close();
+    }
+  });
+
+  it("rejects an ambiguous product root loudly", async () => {
+    // The seeded store has two parentless requirements.
+    const before = snapshot();
+    const res = await call(proposal());
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("Ambiguous product root");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("rejects a parent that is missing or not a requirement, writing nothing", async () => {
+    const before = snapshot();
+
+    let res = await call({ ...proposal(), parentRequirementId: "nope" });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("Parent requirement not found");
+
+    res = await call({ ...proposal(), parentRequirementId: chain.blueprintId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("not a requirement");
+
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("rejects a malformed payload at the schema boundary", async () => {
+    const { requirement: _dropped, ...withoutRequirement } = proposal();
+    const res = await call(withoutRequirement);
+    expect(res.isError).toBe(true);
+  });
+
+  it("rejects blank fields naming the offending document, writing nothing", async () => {
+    const before = snapshot();
+    const bad = proposal();
+    bad.blueprint.body = "   \n\t";
+    const res = await call({ ...bad, parentRequirementId: chain.requirementId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("blueprint: body is empty or whitespace-only");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("rejects an oversized body naming the document and the cap", async () => {
+    const before = snapshot();
+    const bad = proposal();
+    bad.requirement.body = `## Non-goals\n${"x".repeat(20_001)}`;
+    const res = await call({ ...bad, parentRequirementId: chain.requirementId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("requirement: body exceeds 20000 characters");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("rejects an empty and an over-cap evidence list", async () => {
+    const before = snapshot();
+
+    let res = await call({ ...proposal(), evidence: [], parentRequirementId: chain.requirementId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("at least one evidence artifact");
+
+    const many = Array.from({ length: 21 }, (_, i) => ({ title: `e${i}`, body: "b" }));
+    res = await call({ ...proposal(), evidence: many, parentRequirementId: chain.requirementId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("exceed the cap of 20");
+
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("rejects a requirement body failing the blocking health rules (missing-non-goals)", async () => {
+    const before = snapshot();
+    const bad = proposal();
+    bad.requirement.body = "## Capability\nSearch, but no non-goals section.";
+    const res = await call({ ...bad, parentRequirementId: chain.requirementId });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("missing-non-goals");
+    expect(snapshot()).toEqual(before);
+  });
+
+  it("enforces the feature-title-shape rule only under the product root", async () => {
+    const bad = proposal();
+    bad.requirement.title = "Search";
+
+    // Seeded store: two roots, parent given explicitly — the rule is off.
+    let res = await call({ ...bad, parentRequirementId: chain.requirementId });
+    expect(res.isError).toBeFalsy();
+
+    // Collapse to a single root: proposing under it now demands the shape.
+    const roots = store
+      .listEntities("requirement")
+      .filter((r) => store.linked(r.id, "child_of").length === 0);
+    for (const extra of roots.slice(1)) store.link(extra.id, roots[0].id, "child_of");
+    const before = snapshot();
+    res = await call({ ...bad, parentRequirementId: roots[0].id });
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("feature-title-shape");
+    expect(snapshot()).toEqual(before);
   });
 });
