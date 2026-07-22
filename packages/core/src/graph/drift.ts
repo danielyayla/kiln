@@ -1,4 +1,4 @@
-import type { Entity, WorkOrderStatus } from "../domain";
+import type { CompletionReceipt, Entity, WorkOrderStatus } from "../domain";
 import type { Store } from "../store";
 import { DEFAULT_STATUS } from "../transitions";
 import type { HealthCheck } from "./health";
@@ -14,18 +14,28 @@ import type { HealthCheck } from "./health";
 const effectiveStatus = (wo: Entity): WorkOrderStatus => wo.status ?? DEFAULT_STATUS;
 const isOpen = (s: WorkOrderStatus) => s === "draft" || s === "ready" || s === "in_progress";
 
-const latestReceiptAt = (store: Store, workOrderId: string): string | null => {
+const latestReceipt = (store: Store, workOrderId: string): CompletionReceipt | null => {
   // listCompletionReceipts is chronological (oldest first).
   const receipts = store.listCompletionReceipts(workOrderId);
-  return receipts.length > 0 ? receipts[receipts.length - 1].createdAt : null;
+  return receipts.length > 0 ? receipts[receipts.length - 1] : null;
 };
+
+const latestReceiptAt = (store: Store, workOrderId: string): string | null =>
+  latestReceipt(store, workOrderId)?.createdAt ?? null;
+
+const blueprintIds = (store: Store, workOrderId: string): string[] =>
+  store
+    .linked(workOrderId, "implements")
+    .filter((e) => e.type === "blueprint")
+    .map((e) => e.id);
 
 export function driftChecks(store: Store, entity: Entity): HealthCheck[] {
   const checks: HealthCheck[] = [];
   const add = (level: HealthCheck["level"], code: string, message: string) => checks.push({ level, code, message });
 
   if (entity.type === "work_order" && effectiveStatus(entity) === "done") {
-    const receiptAt = latestReceiptAt(store, entity.id);
+    const receipt = latestReceipt(store, entity.id);
+    const receiptAt = receipt?.createdAt ?? null;
     if (receiptAt === null) {
       // Human closes (app/CLI) are legitimately report-free — info, not warn:
       // the chip only marks that no execution record exists to drift against.
@@ -40,6 +50,28 @@ export function driftChecks(store: Store, entity: Entity): HealthCheck[] {
         "revised-after-done",
         "The body was revised after the completion receipt — the shipped work no longer matches this document.",
       );
+    }
+
+    // filesTouched is unverified testimony: matched verbatim, cross-blueprint
+    // only — sequential work orders on one feature legitimately share files.
+    if (receipt && receipt.filesTouched.length > 0) {
+      const myBlueprints = blueprintIds(store, entity.id);
+      if (myBlueprints.length > 0) {
+        for (const other of store.listEntities("work_order")) {
+          if (other.id === entity.id || effectiveStatus(other) !== "done") continue;
+          const theirBlueprints = blueprintIds(store, other.id);
+          if (theirBlueprints.length === 0 || theirBlueprints.some((id) => myBlueprints.includes(id))) continue;
+          const theirFiles = new Set(latestReceipt(store, other.id)?.filesTouched ?? []);
+          const shared = [...new Set(receipt.filesTouched)].filter((f) => theirFiles.has(f));
+          if (shared.length > 0) {
+            add(
+              "info",
+              "shared-files",
+              `The completion receipt claims file(s) another blueprint's shipped work also touched — ${shared.join(", ")} — see "${other.title}".`,
+            );
+          }
+        }
+      }
     }
   }
 

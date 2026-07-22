@@ -11,14 +11,14 @@ afterEach(() => {
   store.close();
 });
 
-const receipt = (workOrderId: string, createdAt: string) => {
+const receipt = (workOrderId: string, createdAt: string, filesTouched: string[] = []) => {
   store.saveCompletionReceipt({
     id: `r-${workOrderId}-${createdAt}`,
     workOrderId,
     summary: "built it",
     verification: "tests pass: 12 passed",
     commits: [],
-    filesTouched: [],
+    filesTouched,
     createdAt,
   });
 };
@@ -164,5 +164,91 @@ describe("done-without-receipt", () => {
     expect(codes(draft)).toEqual([]);
     store.updateEntity(draft.id, { status: "cancelled" });
     expect(codes(draft)).toEqual([]);
+  });
+});
+
+describe("shared-files", () => {
+  // Two done work orders under different blueprints whose latest receipts
+  // claim the given files.
+  const crossBlueprintPair = (filesA: string[], filesB: string[]) => {
+    const bpA = store.createEntity({ type: "blueprint", title: "BP A", body: "x" });
+    const bpB = store.createEntity({ type: "blueprint", title: "BP B", body: "x" });
+    const woA = store.createEntity({ type: "work_order", title: "WO A", body: "x" });
+    const woB = store.createEntity({ type: "work_order", title: "WO B", body: "x" });
+    store.link(woA.id, bpA.id, "implements");
+    store.link(woB.id, bpB.id, "implements");
+    store.updateEntity(woA.id, { status: "done" });
+    store.updateEntity(woB.id, { status: "done" });
+    receipt(woA.id, T1, filesA);
+    receipt(woB.id, T1, filesB);
+    return { woA, woB, bpA, bpB };
+  };
+
+  it("flags both sides of a cross-blueprint overlap, naming the file and the other title", () => {
+    const { woA, woB } = crossBlueprintPair(["src/shared.ts", "src/a.ts"], ["src/shared.ts", "src/b.ts"]);
+    const a = check(woA, "shared-files");
+    expect(a?.level).toBe("info");
+    expect(a?.message).toContain("src/shared.ts");
+    expect(a?.message).toContain("WO B");
+    expect(a?.message).not.toContain("src/a.ts");
+    const b = check(woB, "shared-files");
+    expect(b?.message).toContain("src/shared.ts");
+    expect(b?.message).toContain("WO A");
+  });
+
+  it("lists every shared file when several overlap", () => {
+    const { woA } = crossBlueprintPair(["src/x.ts", "src/y.ts", "src/only-a.ts"], ["src/x.ts", "src/y.ts"]);
+    const msg = check(woA, "shared-files")?.message ?? "";
+    expect(msg).toContain("src/x.ts");
+    expect(msg).toContain("src/y.ts");
+    expect(msg).not.toContain("src/only-a.ts");
+  });
+
+  it("stays quiet on same-blueprint overlap (sequential work shares files legitimately)", () => {
+    const bp = store.createEntity({ type: "blueprint", title: "BP", body: "x" });
+    const woA = store.createEntity({ type: "work_order", title: "WO A", body: "x" });
+    const woB = store.createEntity({ type: "work_order", title: "WO B", body: "x" });
+    store.link(woA.id, bp.id, "implements");
+    store.link(woB.id, bp.id, "implements");
+    store.updateEntity(woA.id, { status: "done" });
+    store.updateEntity(woB.id, { status: "done" });
+    receipt(woA.id, T1, ["src/shared.ts"]);
+    receipt(woB.id, T1, ["src/shared.ts"]);
+    expect(codes(woA)).toEqual([]);
+    expect(codes(woB)).toEqual([]);
+  });
+
+  it("stays quiet when the other work order is not done", () => {
+    const { woA, woB } = crossBlueprintPair(["src/shared.ts"], ["src/shared.ts"]);
+    store.updateEntity(woB.id, { status: "in_progress" });
+    expect(codes(woA)).toEqual([]);
+    // ...and a non-done work order never flags itself either.
+    expect(codes(woB)).toEqual([]);
+  });
+
+  it("stays quiet on empty filesTouched", () => {
+    const { woA, woB } = crossBlueprintPair([], ["src/b.ts"]);
+    expect(codes(woA)).toEqual([]);
+    expect(codes(woB)).toEqual([]);
+  });
+
+  it("compares only the LATEST receipt on each side — superseded testimony never flags", () => {
+    const { woA, woB } = crossBlueprintPair(["src/shared.ts"], ["src/shared.ts"]);
+    receipt(woA.id, T2, ["src/moved-on.ts"]);
+    expect(codes(woA)).toEqual([]);
+    expect(codes(woB)).toEqual([]);
+  });
+
+  it("stays quiet when a work order implements no blueprint (cross-blueprint cannot be established)", () => {
+    const bp = store.createEntity({ type: "blueprint", title: "BP", body: "x" });
+    const linked = store.createEntity({ type: "work_order", title: "Linked", body: "x" });
+    store.link(linked.id, bp.id, "implements");
+    const orphan = store.createEntity({ type: "work_order", title: "Orphan", body: "x" });
+    store.updateEntity(linked.id, { status: "done" });
+    store.updateEntity(orphan.id, { status: "done" });
+    receipt(linked.id, T1, ["src/shared.ts"]);
+    receipt(orphan.id, T1, ["src/shared.ts"]);
+    expect(codes(linked)).toEqual([]);
+    expect(codes(orphan)).toEqual([]);
   });
 });
