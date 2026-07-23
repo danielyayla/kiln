@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { SqliteStore } from "@kiln/core";
+import { DESIGN_DOC_TEMPLATE, seedProject, SqliteStore } from "@kiln/core";
 import { buildMcpServer } from "./server.js";
 import { seed, type SeededChain } from "./seed.js";
 
@@ -26,12 +26,13 @@ afterEach(async () => {
 });
 
 describe("MCP tools", () => {
-  it("lists all four tools", async () => {
+  it("lists all five tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "get_work_order",
       "list_ready_work_orders",
       "propose_feature",
+      "propose_root_overview",
       "update_work_order_status",
     ]);
   });
@@ -552,5 +553,145 @@ describe("propose_feature", () => {
     expect(res.isError).toBe(true);
     expect(errorText(res)).toContain("feature-title-shape");
     expect(snapshot()).toEqual(before);
+  });
+});
+
+describe("propose_root_overview", () => {
+  // A fresh-project store, seeded exactly the way `kiln projects create` and
+  // the app's New Project seed it: root requirement (empty body) + design-doc
+  // blueprint (the fill-in template), linked details → root.
+  let fresh: SqliteStore;
+  let freshClient: Client;
+  let root: { id: string };
+  let designDoc: { id: string };
+
+  beforeEach(async () => {
+    fresh = new SqliteStore(":memory:");
+    ({ root, designDoc } = seedProject(fresh, "Demo"));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    freshClient = new Client({ name: "test-client-root", version: "0.0.0" });
+    await Promise.all([
+      buildMcpServer(fresh).connect(serverTransport),
+      freshClient.connect(clientTransport),
+    ]);
+  });
+
+  afterEach(async () => {
+    await freshClient.close();
+    fresh.close();
+  });
+
+  const rootProposal = () => ({
+    overview: "## Overview\nA demo product.\n\n## Non-goals\n- Not a toy.",
+    architecture: "## Components\nOne binary talking to one database.",
+    evidence: [{ title: "README excerpt", body: "Demo does demo things." }],
+  });
+
+  const call = (args: Record<string, unknown>) =>
+    freshClient.callTool({ name: "propose_root_overview", arguments: args });
+
+  const errorText = (res: Awaited<ReturnType<typeof call>>) =>
+    (res.content as { text: string }[])[0].text;
+
+  it("files both root suggestions and the evidence, committing nothing", async () => {
+    const res = await call(rootProposal());
+    expect(res.isError).toBeFalsy();
+    const ids = res.structuredContent as {
+      rootRequirementId: string;
+      blueprintId: string;
+      artifactIds: string[];
+      suggestionIds: string[];
+    };
+    expect(ids.rootRequirementId).toBe(root.id);
+    expect(ids.blueprintId).toBe(designDoc.id);
+
+    // The gate property: bodies and titles untouched, no revisions.
+    expect(fresh.getEntity(root.id)!.body).toBe("");
+    expect(fresh.getEntity(root.id)!.title).toBe("Demo");
+    expect(fresh.getEntity(designDoc.id)!.body).toBe(DESIGN_DOC_TEMPLATE);
+    expect(fresh.listRevisions(root.id)).toEqual([]);
+    expect(fresh.listRevisions(designDoc.id)).toEqual([]);
+
+    // Overview → empty-anchor insert on the empty root; architecture →
+    // whole-body replace over the seeded template.
+    const [overviewSuggestion] = fresh.listSuggestions(root.id);
+    expect(overviewSuggestion.id).toBe(ids.suggestionIds[0]);
+    expect(overviewSuggestion.ops).toEqual([
+      { kind: "insert", anchor: "", text: rootProposal().overview },
+    ]);
+    const [architectureSuggestion] = fresh.listSuggestions(designDoc.id);
+    expect(architectureSuggestion.id).toBe(ids.suggestionIds[1]);
+    expect(architectureSuggestion.ops).toEqual([
+      { kind: "replace", anchor: DESIGN_DOC_TEMPLATE, text: rootProposal().architecture },
+    ]);
+
+    // Evidence is ungated, references-linked from the root.
+    expect(ids.artifactIds).toHaveLength(1);
+    expect(fresh.linked(root.id, "references").map((e) => e.id)).toEqual(ids.artifactIds);
+  });
+
+  it("evidence is optional", async () => {
+    const { evidence: _none, ...bare } = rootProposal();
+    const res = await call(bare);
+    expect(res.isError).toBeFalsy();
+    expect((res.structuredContent as { artifactIds: string[] }).artifactIds).toEqual([]);
+  });
+
+  it("refuses a non-empty root body loudly, writing nothing", async () => {
+    fresh.updateEntity(root.id, { body: "A hand-written overview." });
+    const res = await call(rootProposal());
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("non-empty body");
+    expect(fresh.listSuggestions(root.id)).toEqual([]);
+    expect(fresh.listEntities("artifact")).toEqual([]);
+  });
+
+  it("refuses an edited architecture template loudly", async () => {
+    fresh.updateEntity(designDoc.id, { body: `${DESIGN_DOC_TEMPLATE}\nedited` });
+    const res = await call(rootProposal());
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("edited since seeding");
+    expect(fresh.listSuggestions(root.id)).toEqual([]);
+  });
+
+  it("refuses to stack on a pending proposal (anchor lock)", async () => {
+    expect((await call(rootProposal())).isError).toBeFalsy();
+    const res = await call(rootProposal());
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("pending suggestion");
+    expect(fresh.listSuggestions(root.id)).toHaveLength(1);
+    expect(fresh.listSuggestions(designDoc.id)).toHaveLength(1);
+    expect(fresh.listEntities("artifact")).toHaveLength(1);
+  });
+
+  it("collects document failures together, naming each check", async () => {
+    const res = await call({
+      overview: "## Overview\nNo non-goals here.",
+      architecture: "x".repeat(20_001),
+      evidence: [{ title: " ", body: "b" }],
+    });
+    expect(res.isError).toBe(true);
+    const text = errorText(res);
+    expect(text).toContain("overview: no Non-goals section (missing-non-goals)");
+    expect(text).toContain("architecture: body exceeds 20000 characters");
+    expect(text).toContain("evidence[0]: title is empty or whitespace-only");
+    expect(fresh.listSuggestions(root.id)).toEqual([]);
+    expect(fresh.listEntities("artifact")).toEqual([]);
+  });
+
+  it("rejects an ambiguous product root (the seeded demo store has two)", async () => {
+    const res = await client.callTool({
+      name: "propose_root_overview",
+      arguments: rootProposal(),
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as { text: string }[])[0].text).toContain("Ambiguous product root");
+  });
+
+  it("rejects a root without a details blueprint", async () => {
+    fresh.deleteEntity(designDoc.id);
+    const res = await call(rootProposal());
+    expect(res.isError).toBe(true);
+    expect(errorText(res)).toContain("no details blueprint");
   });
 });

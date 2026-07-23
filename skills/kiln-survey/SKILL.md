@@ -15,13 +15,15 @@ description: >
 You are bootstrapping a **living source of truth** from code that was never
 built inside Kiln. You read the repository (you are the one with filesystem
 access — Kiln never reads repositories), synthesize a product overview and a
-feature tree, and propose each feature over MCP with `propose_feature`.
+feature tree, propose the root documents with `propose_root_overview`, and
+propose each feature with `propose_feature`.
 
-`propose_feature` is a **gated write**: it creates an empty-bodied requirement
-and blueprint and files your proposed bodies as **pending suggestions**. A
-human accepts or rejects every document in the Kiln app. Nothing you propose
-becomes real until they do — and that gate is the point, not an inconvenience.
-You never accept, and you never propose anything you cannot cite code for.
+Both are **gated writes**: your proposed bodies land as **pending
+suggestions** (`propose_feature` on the empty-bodied requirement and blueprint
+it creates; `propose_root_overview` on the seeded root pair). A human accepts
+or rejects every document in the Kiln app. Nothing you propose becomes real
+until they do — and that gate is the point, not an inconvenience. You never
+accept, and you never propose anything you cannot cite code for.
 
 **Which project are you proposing into?** The MCP server binds to exactly ONE
 project, resolved once at its startup (`KILN_DB_PATH` > `--project`/
@@ -95,15 +97,23 @@ not go in the tree.
   root; propose sub-features only when a capability clearly decomposes and
   the parent stands on its own.
 
-### 4. Hand the root documents to the human
+### 4. Propose the root documents
 
-The product root's body is empty in a fresh project, and there is
-deliberately **no MCP path to write it** — `propose_feature` only creates
-children. Give the human your product overview and system-architecture
-summary as text, to paste into the root requirement and the seeded
-architecture blueprint in the app's editor (or refine there with the
-authoring agents). Do this before or alongside the proposals; it does not
-block them.
+Call `propose_root_overview` **once**, with your product overview and
+system-architecture summary (and optional overview-level evidence — README
+and manifest excerpts, typically). It is the same gate as the feature
+proposals: the overview lands as a pending suggestion on the product root
+requirement and the architecture summary as one on the seeded architecture
+blueprint; the seeded titles stay; nothing is committed until the human
+accepts in the app.
+
+The call refuses loudly unless the root pair is **pristine** — the root body
+empty and the architecture blueprint still the seeded fill-in template, with
+no pending suggestions on either. A refusal naming a non-empty body or an
+edited template is a populated-project signal: stop and ask (v1 has no merge
+semantics — the human edits the existing documents in the app instead).
+
+Do this before or alongside the feature proposals; neither blocks the other.
 
 ### 5. Propose features — top-down, one per call
 
@@ -130,13 +140,14 @@ evidence is missing, go find it in the code or drop the claim.
 
 ### 7. Report and stop
 
-Tell the human: which features you proposed (titles + returned ids), the
-product-overview text awaiting their paste, anything you saw but did not
-propose (and why — usually insufficient evidence), and that review happens in
-the Kiln app: accepting a suggestion commits the body as the document's first
-revision; rejecting discards it. **Your job ends at proposals.** You do not
-accept suggestions, you do not nag for acceptance, and you do not cut work
-orders under unaccepted features.
+Tell the human: which features you proposed (titles + returned ids), that the
+root overview and architecture summary await review as suggestions on the
+root pair, anything you saw but did not propose (and why — usually
+insufficient evidence), and that review happens in the Kiln app: accepting a
+suggestion commits the body as the document's first revision; rejecting
+discards it. **Your job ends at proposals.** You do not accept suggestions,
+you do not nag for acceptance, and you do not cut work orders under
+unaccepted features.
 
 ## The `propose_feature` contract
 
@@ -178,6 +189,44 @@ after itself and leaves nothing half-created:
 Result: `{ requirementId, blueprintId, artifactIds, suggestionIds }` —
 `suggestionIds` is `[requirementSuggestionId, blueprintSuggestionId]`. Keep
 the `requirementId` of anything that may become a parent.
+
+## The `propose_root_overview` contract
+
+One call per survey (step 4):
+
+```jsonc
+{
+  "overview":     "…",                               // body for the product root requirement
+  "architecture": "…",                               // body for the seeded architecture blueprint
+  "evidence":     [ { "title": "…", "body": "…" } ]  // optional, 0–20 artifacts
+}
+```
+
+No target id — the single parentless product root and its `details` blueprint
+ARE the target, resolved server-side (zero or several parentless requirements
+is an error, same as `propose_feature`). Validation, enforced server-side:
+
+- `overview` and `architecture` non-blank and ≤ 20,000 characters; evidence
+  titles ≤ 200 and bodies ≤ 20,000 characters; at most 20 evidence artifacts
+  (none required — the per-feature proposals carry the mandatory evidence;
+  the root documents are a synthesis of them).
+- The overview must contain a `Non-goals` heading (any `#` level).
+- The root pair must be **pristine**: root body empty, blueprint body empty
+  or exactly the seeded template, no pending suggestions on either. Anything
+  else is refused loudly and creates nothing.
+
+What a successful call creates — atomically, compensating on failure:
+
+- The overview as a **pending suggestion** on the root requirement and the
+  architecture summary as one on the `details` blueprint (an insert on an
+  empty body; a whole-body replace over the seeded template, so accepting
+  swaps template for proposal). Titles are untouched; bodies stay uncommitted
+  until the human accepts.
+- Evidence artifacts (if any) with their bodies committed directly, each
+  linked `references` ← the root requirement.
+
+Result: `{ rootRequirementId, blueprintId, artifactIds, suggestionIds }` —
+`suggestionIds` is `[overviewSuggestionId, architectureSuggestionId]`.
 
 ## House templates
 
@@ -307,11 +356,17 @@ warn, show the human the listed titles, and stop. Do not pick one yourself.
 passed a bad `parentRequirementId`. Use the `requirementId` returned by the
 parent's own `propose_feature` call, nothing else.
 
+**`Root overview refused: … non-empty body` / `… edited since seeding` /
+`… pending suggestion(s)`** — the root pair is not pristine. The first two
+are populated-project signals: treat them as the case below. A pending
+suggestion means a proposal (possibly your own earlier call) awaits review —
+the human resolves it in the app; never work around the lock.
+
 **Populated project discovered mid-survey** — any signal that the target
 holds real documents beyond the seeded root (ready work orders, an ambiguous
-root, the human mentioning existing content): stop proposing immediately,
-report what you already proposed, and let the human decide. v1 does not merge
-into populated graphs.
+root, a non-pristine root pair, the human mentioning existing content): stop
+proposing immediately, report what you already proposed, and let the human
+decide. v1 does not merge into populated graphs.
 
 ## Non-negotiables
 

@@ -18,10 +18,11 @@ verify it, and report status back — nothing more.
 Your whole tool surface is three calls:
 `list_ready_work_orders` → `get_work_order` → `update_work_order_status`.
 As an execution agent you never author or edit Kiln documents — every Kiln
-document changes only through suggestions a human resolves. The one document
-write that exists over MCP, `propose_feature`, is a gated proposal surface
-for survey agents (see the kiln-survey skill), and it is no part of this
-loop: do not call it while executing a work order.
+document changes only through suggestions a human resolves. The only document
+writes that exist over MCP, `propose_feature` and `propose_root_overview`,
+are a gated proposal surface for survey agents (see the kiln-survey skill),
+and they are no part of this loop: do not call them while executing a work
+order.
 
 **Which project are you working in?** Kiln holds multiple isolated projects
 (one store each); the MCP server binds to exactly ONE, resolved once at its

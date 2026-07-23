@@ -6,10 +6,12 @@ import {
   assembleWorkOrderContext,
   canTransition,
   ConstraintError,
+  DESIGN_DOC_TEMPLATE,
   readyGateBlockers,
   DEFAULT_STATUS,
   NotFoundError,
   proposeFeature,
+  proposeRootOverview,
   readyWorkOrders,
   recordCompletionReceipt,
   recordContextReceipt,
@@ -28,6 +30,7 @@ import {
   readyWorkOrderSummarySchema,
   workOrderContextShape,
   proposalResultShape,
+  rootProposalResultShape,
 } from "./entity-schema.js";
 
 const SUMMARY_LENGTH = 200;
@@ -112,7 +115,46 @@ function proposalFailures(
   return failures;
 }
 
-// Registers the three FRD-3 tools against a shared Store. Pure over the store:
+// Boundary validation for the surveyed root documents: the same caps and
+// born-compliant discipline as proposalFailures, over two body-only documents
+// (the seeded root pair keeps its titles) plus optional evidence.
+function rootProposalFailures(
+  overview: string,
+  architecture: string,
+  evidence: ProposedDocument[],
+): string[] {
+  const failures: string[] = [];
+  const bodies: Array<[string, string]> = [
+    ["overview", overview],
+    ["architecture", architecture],
+  ];
+  for (const [name, body] of bodies) {
+    if (body.trim() === "") failures.push(`${name}: body is empty or whitespace-only (empty-body)`);
+    else if (body.length > PROPOSAL_BODY_CAP)
+      failures.push(`${name}: body exceeds ${PROPOSAL_BODY_CAP} characters (${body.length})`);
+  }
+  for (const [i, doc] of evidence.entries()) {
+    const name = `evidence[${i}]`;
+    if (doc.title.trim() === "") failures.push(`${name}: title is empty or whitespace-only`);
+    else if (doc.title.length > PROPOSAL_TITLE_CAP)
+      failures.push(`${name}: title exceeds ${PROPOSAL_TITLE_CAP} characters (${doc.title.length})`);
+    if (doc.body.trim() === "")
+      failures.push(`${name}: body is empty or whitespace-only (empty-body)`);
+    else if (doc.body.length > PROPOSAL_BODY_CAP)
+      failures.push(`${name}: body exceeds ${PROPOSAL_BODY_CAP} characters (${doc.body.length})`);
+  }
+  if (evidence.length > PROPOSAL_EVIDENCE_CAP) {
+    failures.push(`evidence: ${evidence.length} artifacts exceed the cap of ${PROPOSAL_EVIDENCE_CAP}`);
+  }
+  if (overview.trim() !== "" && !hasHeading(overview, "Non-goals")) {
+    failures.push(
+      "overview: no Non-goals section (missing-non-goals) — the product overview states what the product deliberately does not do",
+    );
+  }
+  return failures;
+}
+
+// Registers the MCP tools against a shared Store. Pure over the store:
 // no HTTP or auth concerns leak in here, which keeps this unit-testable via an
 // in-memory transport.
 export function registerTools(server: McpServer, store: Store): void {
@@ -318,6 +360,109 @@ export function registerTools(server: McpServer, store: Store): void {
       } catch (err) {
         // Core re-validates authoritatively; its typed rejections (and the
         // compensated mid-write failure) surface as tool errors, not faults.
+        if (err instanceof ConstraintError || err instanceof NotFoundError) {
+          return toolError(`Proposal rejected — nothing was created: ${err.message}`);
+        }
+        throw err;
+      }
+    },
+  );
+
+  server.registerTool(
+    "propose_root_overview",
+    {
+      title: "Propose the surveyed product overview for human review",
+      description:
+        "Propose the survey's ROOT documents as a GATED write: the product overview lands as a PENDING " +
+        "suggestion on the product root requirement, and the system-architecture summary as one on the " +
+        "root's details blueprint — a human accepts or rejects each in the Kiln app; nothing is committed " +
+        "by this call, and the seeded titles are untouched. Optional evidence artifacts (0–20) are created " +
+        "with their bodies and references-linked from the root. The root pair must be PRISTINE: the call " +
+        "refuses loudly when the root body is non-empty, when the architecture blueprint was edited since " +
+        "seeding, or when either document already has a pending suggestion — v1 proposes only into a fresh " +
+        "project (no merge semantics). Caps: bodies ≤ 20,000 chars, evidence titles ≤ 200 chars. The " +
+        "overview must contain a Non-goals section.",
+      inputSchema: {
+        overview: z.string().min(1),
+        architecture: z.string().min(1),
+        evidence: z.array(proposedDocumentSchema).optional(),
+      },
+      outputSchema: rootProposalResultShape,
+    },
+    async ({ overview, architecture, evidence }) => {
+      const evidenceList = evidence ?? [];
+      // The root pair is THE target — no id input; resolution mirrors
+      // propose_feature's omitted-parent path.
+      const roots = rootRequirements(store);
+      if (roots.length === 0) {
+        return toolError(
+          "No product root: the store has no parentless requirement to receive the overview. " +
+            "Create the project via the app or `kiln projects create` (both seed the root pair).",
+        );
+      }
+      if (roots.length > 1) {
+        return toolError(
+          `Ambiguous product root: ${roots.length} parentless requirements ` +
+            `(${roots.map((r) => `"${r.title}"`).join(", ")}). This project is not fresh — stop the survey.`,
+        );
+      }
+      const root = roots[0];
+      const blueprints = store.linkedFrom(root.id, "details").filter((e) => e.type === "blueprint");
+      if (blueprints.length === 0) {
+        return toolError(
+          `Product root "${root.title}" has no details blueprint to receive the architecture summary. ` +
+            "Create the project via the app or `kiln projects create` (both seed it).",
+        );
+      }
+      if (blueprints.length > 1) {
+        return toolError(
+          `Ambiguous architecture target: product root "${root.title}" has ${blueprints.length} details blueprints.`,
+        );
+      }
+      const blueprint = blueprints[0];
+
+      // Target-state refusals come first — they mean "stop the survey", not
+      // "fix the document and retry".
+      if (root.body.trim() !== "") {
+        return toolError(
+          `Root overview refused: requirement "${root.title}" already has a non-empty body. ` +
+            "v1 proposes only into a pristine root — edit the existing overview in the Kiln app instead.",
+        );
+      }
+      if (blueprint.body.trim() !== "" && blueprint.body !== DESIGN_DOC_TEMPLATE) {
+        return toolError(
+          `Root overview refused: architecture blueprint "${blueprint.title}" has been edited since seeding. ` +
+            "v1 proposes only over the pristine template — amend it in the Kiln app instead.",
+        );
+      }
+      for (const target of [root, blueprint]) {
+        const pending = store.listSuggestions(target.id).length;
+        if (pending > 0) {
+          return toolError(
+            `Root overview refused: ${target.type} "${target.title}" has ${pending} pending suggestion(s). ` +
+              "A human must resolve or dismiss them in the Kiln app first.",
+          );
+        }
+      }
+
+      const failures = rootProposalFailures(overview, architecture, evidenceList);
+      if (failures.length > 0) {
+        return toolError(`Proposal rejected — nothing was created:\n- ${failures.join("\n- ")}`);
+      }
+
+      try {
+        const ids = proposeRootOverview(store, root.id, {
+          overview,
+          architecture,
+          evidence: evidenceList,
+        });
+        return ok({
+          rootRequirementId: ids.rootRequirementId,
+          blueprintId: ids.blueprintId,
+          artifactIds: ids.artifactIds,
+          suggestionIds: [ids.overviewSuggestionId, ids.architectureSuggestionId],
+        });
+      } catch (err) {
         if (err instanceof ConstraintError || err instanceof NotFoundError) {
           return toolError(`Proposal rejected — nothing was created: ${err.message}`);
         }

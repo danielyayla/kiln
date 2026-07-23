@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Id, Suggestion } from "../domain";
+import type { Entity, Id, Suggestion } from "../domain";
 import { ConstraintError, NotFoundError } from "../errors";
+import { DESIGN_DOC_TEMPLATE } from "../seed";
 import type { Store } from "../store";
 
 const nonBlank = (field: string) =>
@@ -117,6 +118,161 @@ export function proposeFeature(
     };
   } catch (err) {
     for (const id of created.reverse()) {
+      try {
+        store.deleteEntity(id);
+      } catch {
+        // best-effort compensation; the original error is what matters
+      }
+    }
+    throw err;
+  }
+}
+
+// The survey's root documents: the product overview proposed for the product
+// root requirement's body, and the system-architecture summary proposed for
+// the root's `details` blueprint. Evidence is optional here — the per-feature
+// proposals carry the mandatory evidence; the root documents are a synthesis
+// of them.
+export const ProposedRootOverview = z.object({
+  overview: nonBlank("overview"),
+  architecture: nonBlank("architecture"),
+  evidence: z.array(proposedDocument("evidence")).default([]),
+});
+export type ProposedRootOverview = z.input<typeof ProposedRootOverview>;
+
+export interface ProposedRootOverviewIds {
+  rootRequirementId: Id;
+  blueprintId: Id;
+  artifactIds: Id[];
+  overviewSuggestionId: Id;
+  architectureSuggestionId: Id;
+}
+
+// A fresh project's root requirement is seeded empty, but its design-doc
+// blueprint is seeded with the fill-in DESIGN_DOC_TEMPLATE — so a proposal
+// appends to an empty body and REPLACES a template body (whole-body anchor:
+// unique by construction, and acceptance swaps template for proposal).
+const pendingBodyFor = (target: Entity, text: string): Suggestion => ({
+  id: randomUUID(),
+  targetId: target.id,
+  source: "extract_agent",
+  ops:
+    target.body.trim() === ""
+      ? [{ kind: "insert", anchor: "", text }]
+      : [{ kind: "replace", anchor: target.body, text }],
+});
+
+// A root document is proposable only while PRISTINE — untouched since project
+// seeding. Anything else means a human (or an accepted earlier proposal)
+// already owns the body, and v1 has no merge semantics: refuse loudly.
+const pristine = (entity: Entity) =>
+  entity.body.trim() === "" || entity.body === DESIGN_DOC_TEMPLATE;
+
+// Materialize the surveyed root overview behind the suggestion gate: nothing
+// is committed — the overview lands as a pending suggestion on the product
+// root requirement and the architecture summary as one on the root's
+// `details` blueprint. Optional evidence artifacts get their bodies directly
+// (read-only source material) and are `references`-linked from the root.
+//
+// Validate-then-write, same as proposeFeature: every rejection happens before
+// the first store call; an unexpected mid-write failure is compensated by
+// deleting the saved suggestions and created artifacts.
+export function proposeRootOverview(
+  store: Store,
+  rootRequirementId: Id,
+  proposal: ProposedRootOverview,
+): ProposedRootOverviewIds {
+  const parsed = ProposedRootOverview.safeParse(proposal);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("; ");
+    throw new ConstraintError(`invalid root-overview proposal: ${issues}`);
+  }
+  const data = parsed.data;
+
+  const root = store.getEntity(rootRequirementId);
+  if (!root) throw new NotFoundError(rootRequirementId);
+  if (root.type !== "requirement") {
+    throw new ConstraintError(
+      `root-overview target ${rootRequirementId} is a ${root.type}, not a requirement`,
+    );
+  }
+  if (store.linked(root.id, "child_of").length > 0) {
+    throw new ConstraintError(
+      `requirement ${rootRequirementId} has a parent — the root overview lands only on the parentless product root`,
+    );
+  }
+  const blueprints = store.linkedFrom(root.id, "details").filter((e) => e.type === "blueprint");
+  if (blueprints.length === 0) {
+    throw new ConstraintError(
+      `product root ${rootRequirementId} has no details blueprint to receive the architecture summary`,
+    );
+  }
+  if (blueprints.length > 1) {
+    throw new ConstraintError(
+      `product root ${rootRequirementId} has ${blueprints.length} details blueprints — ambiguous architecture target`,
+    );
+  }
+  const blueprint = blueprints[0];
+
+  if (!pristine(root)) {
+    throw new ConstraintError(
+      `product root "${root.title}" already has a non-empty body — v1 proposes the overview only into a pristine root`,
+    );
+  }
+  if (!pristine(blueprint)) {
+    throw new ConstraintError(
+      `architecture blueprint "${blueprint.title}" has been edited since seeding — v1 proposes only over the pristine template`,
+    );
+  }
+  for (const target of [root, blueprint]) {
+    const pending = store.listSuggestions(target.id).length;
+    if (pending > 0) {
+      throw new ConstraintError(
+        `${target.type} ${target.id} has ${pending} pending suggestion(s); resolve or dismiss them before proposing`,
+      );
+    }
+  }
+
+  const createdArtifacts: Id[] = [];
+  const savedSuggestions: Id[] = [];
+  try {
+    const artifactIds: Id[] = [];
+    for (const evidence of data.evidence) {
+      const artifact = store.createEntity({
+        type: "artifact",
+        title: evidence.title,
+        body: evidence.body,
+      });
+      createdArtifacts.push(artifact.id);
+      store.link(root.id, artifact.id, "references");
+      artifactIds.push(artifact.id);
+    }
+
+    const overviewSuggestion = pendingBodyFor(root, data.overview);
+    store.saveSuggestion(overviewSuggestion);
+    savedSuggestions.push(overviewSuggestion.id);
+    const architectureSuggestion = pendingBodyFor(blueprint, data.architecture);
+    store.saveSuggestion(architectureSuggestion);
+    savedSuggestions.push(architectureSuggestion.id);
+
+    return {
+      rootRequirementId: root.id,
+      blueprintId: blueprint.id,
+      artifactIds,
+      overviewSuggestionId: overviewSuggestion.id,
+      architectureSuggestionId: architectureSuggestion.id,
+    };
+  } catch (err) {
+    for (const id of savedSuggestions.reverse()) {
+      try {
+        store.deleteSuggestion(id);
+      } catch {
+        // best-effort compensation; the original error is what matters
+      }
+    }
+    for (const id of createdArtifacts.reverse()) {
       try {
         store.deleteEntity(id);
       } catch {

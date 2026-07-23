@@ -3,9 +3,9 @@
 How to run the Kiln MCP server and drive the work-order loop from Claude Code
 (or any MCP client that speaks streamable HTTP). This is the Phase-1 loop:
 `list_ready_work_orders` → `get_work_order` → implement → `update_work_order_status`.
-A fourth tool, `propose_feature` (§5), is the survey surface — the ONLY
-document write that exists over MCP, and it is gated: proposals land as
-pending suggestions a human resolves in the app.
+Two further tools, `propose_feature` and `propose_root_overview` (§5), are
+the survey surface — the ONLY document writes that exist over MCP, and both
+are gated: proposals land as pending suggestions a human resolves in the app.
 
 ## 1. Build and seed
 
@@ -100,9 +100,10 @@ claude mcp list
 # kiln: http://127.0.0.1:3777/mcp (HTTP) - ✔ Connected
 ```
 
-Then start `claude` in your project. The four tools appear as
+Then start `claude` in your project. The five tools appear as
 `mcp__kiln__list_ready_work_orders`, `mcp__kiln__get_work_order`,
-`mcp__kiln__update_work_order_status`, and `mcp__kiln__propose_feature`.
+`mcp__kiln__update_work_order_status`, `mcp__kiln__propose_feature`, and
+`mcp__kiln__propose_root_overview`.
 
 Other MCP clients: any client that supports streamable HTTP works the same way —
 point it at the URL and supply the `Authorization` header. With the TypeScript
@@ -214,18 +215,22 @@ Ask the agent to work the board, or call the tools directly:
      Invalid completion report — no receipt recorded, status unchanged: report.summary: summary must not be empty or whitespace-only
      ```
 
-## 5. Propose features — the gated document write
+## 5. Survey proposals — the gated document writes
 
-`propose_feature` exists for **survey agents** bootstrapping a brownfield
-repository into a fresh Kiln project (the procedure lives in
-[`skills/kiln-survey/SKILL.md`](../skills/kiln-survey/SKILL.md)). It is the
-only document-write path over MCP, and it is deliberately **gated**: there
-are no ungated document writes. The invariant, precisely:
+`propose_feature` and `propose_root_overview` exist for **survey agents**
+bootstrapping a brownfield repository into a fresh Kiln project (the
+procedure lives in
+[`skills/kiln-survey/SKILL.md`](../skills/kiln-survey/SKILL.md)). They are
+the only document-write paths over MCP, and both are deliberately **gated**:
+there are no ungated document writes. The invariant, precisely:
 
 > Document writes over MCP exist ONLY as gated proposals via
-> `propose_feature` — the proposed bodies land as pending suggestions a
-> human accepts or rejects in the app; nothing is committed by the call.
-> Execution agents (the kiln-execute loop) still never author documents.
+> `propose_feature` and `propose_root_overview` — the proposed bodies land
+> as pending suggestions a human accepts or rejects in the app; nothing is
+> committed by either call. Execution agents (the kiln-execute loop) still
+> never author documents.
+
+### `propose_feature` — one feature per call
 
 One call proposes ONE feature. Input:
 
@@ -297,6 +302,47 @@ The full rejection catalog:
 | `No product root: the store has no parentless requirement to attach this feature to. Pass parentRequirementId explicitly.` | Omitted parent in a store with no parentless requirement. |
 | `Ambiguous product root: N parentless requirements ("…", "…"). Pass parentRequirementId explicitly.` | Omitted parent with several parentless requirements — in a survey target this means the project is not fresh. |
 | `Proposal rejected — nothing was created: <message>` | Core's authoritative re-validation (typed constraint/not-found rejections, or a compensated mid-write failure). |
+
+### `propose_root_overview` — the root documents
+
+A fresh project is seeded with a product-root requirement (title = project
+name, empty body) and a `<name> system architecture` blueprint linked
+`details` → root (its body is a fill-in template). `propose_root_overview`
+delivers the survey's synthesis into that pair: the product overview lands as
+a **pending suggestion** on the root requirement, the system-architecture
+summary as one on the blueprint — an empty-anchor insert on an empty body, a
+whole-body replace over the seeded template, so accepting swaps template for
+proposal. The seeded titles are untouched, and nothing is committed by the
+call. One call per survey. Input:
+
+| Field | Shape | Required | What it is |
+|---|---|---|---|
+| `overview` | string | yes | Body proposed for the product root requirement: what the product is, who it serves, core capabilities, non-goals. Must contain a `Non-goals` heading. |
+| `architecture` | string | yes | Body proposed for the root's `details` blueprint: components, data flow, stack, conventions. |
+| `evidence` | `{ title, body }[]` | no — 0 to 20 | Optional overview-level evidence artifacts, `references`-linked from the root. None required: the per-feature proposals carry the mandatory evidence; the root documents are a synthesis of them. |
+
+There is no target id — the single parentless product root and its `details`
+blueprint ARE the target, resolved server-side. The root pair must be
+**pristine** (untouched since seeding): the call refuses loudly when the root
+body is non-empty, when the blueprint body is neither empty nor exactly the
+seeded template, or when either document already has a pending suggestion —
+v1 proposes only into a fresh project; an existing overview is edited in the
+app, never merged over MCP.
+
+Output shape: `{ rootRequirementId, blueprintId, artifactIds, suggestionIds }`,
+where `suggestionIds` is `[overview suggestion, architecture suggestion]`.
+
+Rejections beyond the shared blank/cap catalog above (all create nothing):
+
+| Rejection | Trigger |
+|---|---|
+| `overview: no Non-goals section (missing-non-goals) — …` | The overview body has no `Non-goals` heading (any `#` level). |
+| `No product root: …` / `Ambiguous product root: …` | Zero or several parentless requirements — the latter means the project is not fresh. |
+| `Product root "…" has no details blueprint …` | The root lacks its seeded architecture blueprint. |
+| `Ambiguous architecture target: …` | Several `details` blueprints on the root. |
+| `Root overview refused: … already has a non-empty body.` | The root requirement was already written — populated project. |
+| `Root overview refused: … has been edited since seeding.` | The architecture blueprint no longer holds the pristine template. |
+| `Root overview refused: … has N pending suggestion(s).` | A proposal already awaits review on the root pair (anchor lock — suggestions anchor to the current body). |
 
 ## 6. Install the execution skill
 

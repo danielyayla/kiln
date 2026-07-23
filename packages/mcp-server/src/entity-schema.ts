@@ -73,6 +73,16 @@ export const proposalResultShape = {
   suggestionIds: z.array(z.string()),
 };
 
+// Output shape of `propose_root_overview`: the (pre-existing) root pair the
+// suggestions landed on, the evidence artifacts created, and `suggestionIds`
+// as [overview suggestion, architecture suggestion].
+export const rootProposalResultShape = {
+  rootRequirementId: z.string(),
+  blueprintId: z.string(),
+  artifactIds: z.array(z.string()),
+  suggestionIds: z.array(z.string()),
+};
+
 // An agent's completion report — required when closing in_progress → done, the
 // return half of the handoff loop. Mirror of core's CompletionReport, which
 // re-validates authoritatively inside recordCompletionReceipt (rejecting

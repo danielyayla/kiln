@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Entity } from "../domain";
+import { applySuggestion } from "../edits/apply";
 import { ConstraintError, NotFoundError } from "../errors";
+import { DESIGN_DOC_TEMPLATE, seedProject } from "../seed";
 import { SqliteStore } from "../store/sqlite-store";
-import { proposeFeature, type ProposedFeature } from "./proposal";
+import {
+  proposeFeature,
+  proposeRootOverview,
+  type ProposedFeature,
+  type ProposedRootOverview,
+} from "./proposal";
 
 let store: SqliteStore;
 let parent: Entity;
@@ -146,5 +153,177 @@ describe("proposeFeature — rejections write nothing", () => {
     });
     expect(() => proposeFeature(failing, parent.id, proposal())).toThrow("disk full");
     storeIsEmpty();
+  });
+});
+
+describe("proposeRootOverview", () => {
+  let root: Entity;
+  let designDoc: Entity;
+  beforeEach(() => {
+    // The store already holds `parent` from the shared beforeEach; a fresh
+    // project's exact seeded shape is what this path targets, so build one.
+    store.deleteEntity(parent.id);
+    ({ root, designDoc } = seedProject(store, "Demo"));
+  });
+
+  const rootProposal = (): ProposedRootOverview => ({
+    overview: "## Overview\nA demo product.\n\n## Non-goals\n- Not a toy.",
+    architecture: "## Components\nOne binary.\n\n## Stack\nRust.",
+    evidence: [{ title: "README excerpt", body: "Demo does demo things." }],
+  });
+
+  it("files the overview and architecture as pending suggestions, committing nothing", () => {
+    const ids = proposeRootOverview(store, root.id, rootProposal());
+
+    expect(ids.rootRequirementId).toBe(root.id);
+    expect(ids.blueprintId).toBe(designDoc.id);
+
+    // Gate property: both bodies unchanged, no revisions anywhere.
+    expect(store.getEntity(root.id)!.body).toBe("");
+    expect(store.getEntity(designDoc.id)!.body).toBe(DESIGN_DOC_TEMPLATE);
+    expect(store.listRevisions(root.id)).toEqual([]);
+    expect(store.listRevisions(designDoc.id)).toEqual([]);
+
+    // Empty root body → empty-anchor insert (the draft-agent shape).
+    const [overviewSuggestion] = store.listSuggestions(root.id);
+    expect(overviewSuggestion.id).toBe(ids.overviewSuggestionId);
+    expect(overviewSuggestion.source).toBe("extract_agent");
+    expect(overviewSuggestion.ops).toEqual([
+      { kind: "insert", anchor: "", text: rootProposal().overview },
+    ]);
+
+    // Seeded template body → whole-body replace, so accepting swaps
+    // template for proposal.
+    const [architectureSuggestion] = store.listSuggestions(designDoc.id);
+    expect(architectureSuggestion.id).toBe(ids.architectureSuggestionId);
+    expect(architectureSuggestion.ops).toEqual([
+      { kind: "replace", anchor: DESIGN_DOC_TEMPLATE, text: rootProposal().architecture },
+    ]);
+
+    // Evidence is ungated source material, references-linked from the root.
+    expect(ids.artifactIds).toHaveLength(1);
+    expect(store.getEntity(ids.artifactIds[0])!.body).toBe("Demo does demo things.");
+    expect(store.linked(root.id, "references").map((e) => e.id)).toEqual(ids.artifactIds);
+  });
+
+  it("accepting the suggestions commits exactly the proposed bodies", () => {
+    const ids = proposeRootOverview(store, root.id, rootProposal());
+    applySuggestion(store, ids.overviewSuggestionId, [0]);
+    applySuggestion(store, ids.architectureSuggestionId, [0]);
+    expect(store.getEntity(root.id)!.body).toBe(rootProposal().overview);
+    expect(store.getEntity(designDoc.id)!.body).toBe(rootProposal().architecture);
+  });
+
+  it("evidence is optional — omitting it creates no artifacts", () => {
+    const { evidence: _none, ...bare } = rootProposal();
+    const ids = proposeRootOverview(store, root.id, bare);
+    expect(ids.artifactIds).toEqual([]);
+    expect(store.listEntities("artifact")).toEqual([]);
+  });
+
+  it("locks the root body while the proposal is pending (anchor lock)", () => {
+    proposeRootOverview(store, root.id, rootProposal());
+    expect(() => store.updateEntity(root.id, { body: "manual edit" })).toThrow(
+      /pending suggestion/,
+    );
+    expect(() => store.updateEntity(designDoc.id, { body: "manual edit" })).toThrow(
+      /pending suggestion/,
+    );
+  });
+
+  const writesNothing = () => {
+    expect(store.listEntities("artifact")).toEqual([]);
+    expect(store.listSuggestions(root.id)).toEqual([]);
+    expect(store.listSuggestions(designDoc.id)).toEqual([]);
+  };
+
+  it.each([
+    ["blank overview", { overview: "  " }],
+    ["blank architecture", { architecture: "\n\t" }],
+    ["blank evidence title", { evidence: [{ title: " ", body: "b" }] }],
+    ["blank evidence body", { evidence: [{ title: "T", body: "" }] }],
+  ] as Array<[string, Partial<ProposedRootOverview>]>)(
+    "rejects %s with ConstraintError, writing nothing",
+    (_label, patch) => {
+      expect(() => proposeRootOverview(store, root.id, { ...rootProposal(), ...patch })).toThrow(
+        ConstraintError,
+      );
+      writesNothing();
+    },
+  );
+
+  it("rejects a missing or non-requirement target", () => {
+    expect(() => proposeRootOverview(store, "missing", rootProposal())).toThrow(NotFoundError);
+    expect(() => proposeRootOverview(store, designDoc.id, rootProposal())).toThrow(
+      /not a requirement/,
+    );
+  });
+
+  it("rejects a requirement that is not the parentless root", () => {
+    const child = store.createEntity({ type: "requirement", title: "Feature", body: "" });
+    store.link(child.id, root.id, "child_of");
+    expect(() => proposeRootOverview(store, child.id, rootProposal())).toThrow(/has a parent/);
+  });
+
+  it("rejects a root without a details blueprint", () => {
+    store.deleteEntity(designDoc.id);
+    expect(() => proposeRootOverview(store, root.id, rootProposal())).toThrow(
+      /no details blueprint/,
+    );
+  });
+
+  it("refuses a non-pristine root body loudly", () => {
+    store.updateEntity(root.id, { body: "A hand-written overview." });
+    expect(() => proposeRootOverview(store, root.id, rootProposal())).toThrow(
+      /non-empty body/,
+    );
+    writesNothing();
+  });
+
+  it("refuses an edited architecture template loudly, accepts the pristine one", () => {
+    store.updateEntity(designDoc.id, { body: `${DESIGN_DOC_TEMPLATE}\nedited` });
+    expect(() => proposeRootOverview(store, root.id, rootProposal())).toThrow(
+      /edited since seeding/,
+    );
+    writesNothing();
+
+    // An empty blueprint body is also pristine — the proposal lands as an insert.
+    store.updateEntity(designDoc.id, { body: "" });
+    const ids = proposeRootOverview(store, root.id, rootProposal());
+    expect(store.getSuggestion(ids.architectureSuggestionId)!.ops[0].kind).toBe("insert");
+  });
+
+  it("refuses to stack on pending suggestions — including its own second call", () => {
+    proposeRootOverview(store, root.id, rootProposal());
+    expect(() => proposeRootOverview(store, root.id, rootProposal())).toThrow(
+      /pending suggestion/,
+    );
+    // Still exactly one suggestion per document and one evidence artifact.
+    expect(store.listSuggestions(root.id)).toHaveLength(1);
+    expect(store.listSuggestions(designDoc.id)).toHaveLength(1);
+    expect(store.listEntities("artifact")).toHaveLength(1);
+  });
+
+  it("compensates a mid-write failure by removing suggestions and artifacts", () => {
+    // First saveSuggestion (overview) succeeds, second (architecture) fails.
+    let saves = 0;
+    const failing = new Proxy(store, {
+      get(target, prop, receiver) {
+        if (prop === "saveSuggestion") {
+          return (s: Parameters<typeof store.saveSuggestion>[0]) => {
+            saves += 1;
+            if (saves === 2) throw new Error("disk full");
+            return store.saveSuggestion(s);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    expect(() => proposeRootOverview(failing, root.id, rootProposal())).toThrow("disk full");
+    writesNothing();
+    // The seeded pair itself is untouched.
+    expect(store.getEntity(root.id)!.body).toBe("");
+    expect(store.getEntity(designDoc.id)!.body).toBe(DESIGN_DOC_TEMPLATE);
   });
 });
