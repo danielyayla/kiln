@@ -34,13 +34,18 @@ const ROLE_ORDER: Partial<Record<EntityType, number>> = {
   blueprint: 1,
 };
 
-const byCreation = (a: Entity, b: Entity) =>
-  a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt);
-
 export function pendingProposals(store: Store): ProposalGroup[] {
   const types: EntityType[] = ["requirement", "blueprint", "work_order", "artifact"];
-  const pending = types
-    .flatMap((t) => store.listEntities(t))
+  const all = types.flatMap((t) => store.listEntities(t));
+
+  // created_at has millisecond resolution, so entities created in the same
+  // tick tie; break ties by scan position (insertion order within each type)
+  // so the walk is stable instead of falling to random-UUID order.
+  const ordinal = new Map(all.map((e, i) => [e.id, i]));
+  const byCreation = (a: Entity, b: Entity) =>
+    a.createdAt.localeCompare(b.createdAt) || ordinal.get(a.id)! - ordinal.get(b.id)!;
+
+  const pending = all
     .map((entity) => ({ entity, suggestions: store.listSuggestions(entity.id) }))
     .filter(({ suggestions }) => suggestions.length > 0);
 
