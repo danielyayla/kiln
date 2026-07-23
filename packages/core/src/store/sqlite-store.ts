@@ -184,7 +184,7 @@ export class SqliteStore implements Store {
 
   listEntities(type: EntityType): Entity[] {
     const rows = this.db
-      .prepare(`SELECT * FROM entities WHERE type = ? ORDER BY created_at`)
+      .prepare(`SELECT * FROM entities WHERE type = ? ORDER BY created_at, rowid`)
       .all(type) as unknown as EntityRow[];
     return rows.map(toEntity);
   }
@@ -270,7 +270,7 @@ export class SqliteStore implements Store {
     const rows = this.db
       .prepare(
         `SELECT e.* FROM links l JOIN entities e ON e.id = l.to_id
-         WHERE l.from_id = ? AND l.type = ? ORDER BY e.created_at`,
+         WHERE l.from_id = ? AND l.type = ? ORDER BY e.created_at, e.rowid`,
       )
       .all(id, type) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -280,7 +280,7 @@ export class SqliteStore implements Store {
     const rows = this.db
       .prepare(
         `SELECT e.* FROM links l JOIN entities e ON e.id = l.from_id
-         WHERE l.to_id = ? AND l.type = ? ORDER BY e.created_at`,
+         WHERE l.to_id = ? AND l.type = ? ORDER BY e.created_at, e.rowid`,
       )
       .all(id, type) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -299,7 +299,7 @@ export class SqliteStore implements Store {
            UNION
            SELECT l.from_id FROM links l JOIN sub ON l.to_id = sub.id AND l.type = 'child_of'
          )
-         SELECT e.* FROM entities e JOIN sub ON e.id = sub.id ORDER BY e.created_at`,
+         SELECT e.* FROM entities e JOIN sub ON e.id = sub.id ORDER BY e.created_at, e.rowid`,
       )
       .all(rootId) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -307,7 +307,9 @@ export class SqliteStore implements Store {
 
   workOrdersByStatus(status: WorkOrderStatus): Entity[] {
     const rows = this.db
-      .prepare(`SELECT * FROM entities WHERE type='work_order' AND status=? ORDER BY created_at`)
+      .prepare(
+        `SELECT * FROM entities WHERE type='work_order' AND status=? ORDER BY created_at, rowid`,
+      )
       .all(status) as unknown as EntityRow[];
     return rows.map(toEntity);
   }
