@@ -25,6 +25,9 @@ importers:
       '@kiln/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kiln/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
       '@tanstack/react-query':
         specifier: ^5.90.5
         version: 5.101.2(react@19.2.7)
@@ -53,6 +56,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@3.25.76)
       '@tauri-apps/cli':
         specifier: ^2.11.4
         version: 2.11.4
