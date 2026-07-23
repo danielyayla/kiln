@@ -12,6 +12,7 @@ import { assembleWorkOrderContext } from "./context";
 import { contextHealth, type HealthCheck } from "./health";
 import { criticalPath, graphGaps, type GraphGaps } from "./overlays";
 import { blockingDependencies, readyWorkOrders } from "./readiness";
+import { verificationAttention, type VerificationAttentionEntry } from "./verification";
 import { featureRoots } from "./roots";
 import { descendantWorkOrders, rollup } from "./snapshot";
 
@@ -62,6 +63,9 @@ export interface ProjectPulse {
   // What is happening right now (Phase 11 — Pulse as home): work in flight,
   // and the honest agent list — exactly what list_ready_work_orders offers.
   now: { inProgress: WorkOrderRef[]; next: WorkOrderRef[] };
+  // Done-but-unverified (or verified-with-failures) work orders that matter —
+  // critical first, routine excluded (verification & criticality feature).
+  verificationAttention: VerificationAttentionEntry[];
 }
 
 const byTitleThenId = (a: { title: string; id: Id }, b: { title: string; id: Id }) =>
@@ -239,5 +243,6 @@ export function projectPulse(store: Store): ProjectPulse {
     criticalPath: path,
     blocked,
     now,
+    verificationAttention: verificationAttention(store),
   };
 }

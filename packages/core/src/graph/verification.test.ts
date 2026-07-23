@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { VerificationVerdict, type CriterionVerdict } from "../domain";
 import { ConstraintError, NotFoundError } from "../errors";
 import { SqliteStore } from "../store/sqlite-store";
-import { recordVerificationReceipt } from "./verification";
+import { recordVerificationReceipt, verificationAttention, verificationStatus } from "./verification";
 
 let store: SqliteStore;
 beforeEach(() => {
@@ -95,5 +95,103 @@ describe("recordVerificationReceipt", () => {
     recordVerificationReceipt(store, wo.id, { criteria: [criterion({ status: "unmet", reason: "gap" })], overall: "unmet" });
     recordVerificationReceipt(store, wo.id, { criteria: [criterion()], overall: "met" });
     expect(store.listVerificationReceipts(wo.id).map((r) => r.overall)).toEqual(["unmet", "met"]);
+  });
+});
+
+describe("verificationStatus", () => {
+  it("classifies no receipts as unverified", () => {
+    const wo = store.createEntity({ type: "work_order", title: "W", status: "done" });
+    expect(verificationStatus(store, wo.id)).toBe("unverified");
+  });
+
+  it("classifies a clean latest verdict — overall met, every criterion met — as verified", () => {
+    const wo = store.createEntity({ type: "work_order", title: "W", status: "done" });
+    recordVerificationReceipt(store, wo.id, {
+      criteria: [criterion(), criterion({ criterion: "typecheck clean" })],
+      overall: "met",
+    });
+    expect(verificationStatus(store, wo.id)).toBe("verified");
+  });
+
+  it("classifies any unmet criterion as verified_with_failures", () => {
+    const wo = store.createEntity({ type: "work_order", title: "W", status: "done" });
+    recordVerificationReceipt(store, wo.id, {
+      criteria: [criterion(), criterion({ criterion: "live verified", status: "unmet", reason: "no evidence" })],
+      overall: "met",
+    });
+    expect(verificationStatus(store, wo.id)).toBe("verified_with_failures");
+  });
+
+  it("classifies an undecidable criterion or a non-met overall as verified_with_failures", () => {
+    const undecidable = store.createEntity({ type: "work_order", title: "W1", status: "done" });
+    recordVerificationReceipt(store, undecidable.id, {
+      criteria: [criterion({ status: "undecidable", reason: "receipt is silent" })],
+      overall: "met",
+    });
+    expect(verificationStatus(store, undecidable.id)).toBe("verified_with_failures");
+
+    const overall = store.createEntity({ type: "work_order", title: "W2", status: "done" });
+    recordVerificationReceipt(store, overall.id, { criteria: [], overall: "undecidable" });
+    expect(verificationStatus(store, overall.id)).toBe("verified_with_failures");
+  });
+
+  it("judges only the LATEST receipt — re-verification supersedes for display", () => {
+    const wo = store.createEntity({ type: "work_order", title: "W", status: "done" });
+    recordVerificationReceipt(store, wo.id, {
+      criteria: [criterion({ status: "unmet", reason: "gap" })],
+      overall: "unmet",
+    });
+    expect(verificationStatus(store, wo.id)).toBe("verified_with_failures");
+
+    recordVerificationReceipt(store, wo.id, { criteria: [criterion()], overall: "met" });
+    expect(verificationStatus(store, wo.id)).toBe("verified");
+  });
+});
+
+describe("verificationAttention", () => {
+  const done = (title: string, criticality?: "routine" | "important" | "critical") =>
+    store.createEntity({ type: "work_order", title, status: "done", ...(criticality ? { criticality } : {}) });
+
+  it("lists critical done-unverified orders and excludes routine ones", () => {
+    const critical = done("needs eyes", "critical");
+    done("quiet by design", "routine");
+    done("unset is routine"); // no criticality — effective routine, also quiet
+
+    const entries = verificationAttention(store);
+    expect(entries).toEqual([
+      { id: critical.id, title: "needs eyes", criticality: "critical", verification: "unverified" },
+    ]);
+  });
+
+  it("includes verified-with-failures and drops cleanly verified orders", () => {
+    const failed = done("failed verify", "critical");
+    recordVerificationReceipt(store, failed.id, {
+      criteria: [criterion({ status: "unmet", reason: "gap" })],
+      overall: "unmet",
+    });
+    const clean = done("clean verify", "critical");
+    recordVerificationReceipt(store, clean.id, { criteria: [criterion()], overall: "met" });
+
+    const entries = verificationAttention(store);
+    expect(entries.map((e) => e.id)).toEqual([failed.id]);
+    expect(entries[0].verification).toBe("verified_with_failures");
+  });
+
+  it("only surfaces done orders — the signal is scoped to completed work", () => {
+    store.createEntity({ type: "work_order", title: "in flight", status: "in_progress", criticality: "critical" });
+    store.createEntity({ type: "work_order", title: "still ready", status: "ready", criticality: "critical" });
+    expect(verificationAttention(store)).toEqual([]);
+  });
+
+  it("weights by criticality: critical before important, then title", () => {
+    done("b important", "important");
+    done("a critical", "critical");
+    done("c critical", "critical");
+
+    expect(verificationAttention(store).map((e) => e.title)).toEqual([
+      "a critical",
+      "c critical",
+      "b important",
+    ]);
   });
 });

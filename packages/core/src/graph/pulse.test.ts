@@ -38,6 +38,21 @@ describe("projectPulse", () => {
     expect(pulse.criticalPath).toEqual([]);
     expect(pulse.blocked).toEqual([]);
     expect(pulse.now).toEqual({ inProgress: [], next: [] });
+    expect(pulse.verificationAttention).toEqual([]);
+  });
+
+  it("surfaces critical done-unverified work in verificationAttention, routine stays quiet", () => {
+    const critical = store.createEntity({
+      type: "work_order",
+      title: "critical close",
+      status: "done",
+      criticality: "critical",
+    });
+    store.createEntity({ type: "work_order", title: "routine close", status: "done" });
+
+    expect(projectPulse(store).verificationAttention).toEqual([
+      { id: critical.id, title: "critical close", criticality: "critical", verification: "unverified" },
+    ]);
   });
 
   it("counts entities per type and work orders per status", () => {
