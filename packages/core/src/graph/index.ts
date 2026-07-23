@@ -10,6 +10,7 @@ export * from "./readiness";
 export * from "./ready-gate";
 export * from "./receipt";
 export * from "./roots";
+export * from "./shape";
 export * from "./skills";
 export * from "./snapshot";
 export * from "./tree";

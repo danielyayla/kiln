@@ -10,6 +10,7 @@ import {
   readyGateBlockers,
   DEFAULT_STATUS,
   NotFoundError,
+  projectShape,
   proposeFeature,
   proposeRootOverview,
   readyWorkOrders,
@@ -29,6 +30,7 @@ import {
   proposedDocumentSchema,
   readyWorkOrderSummarySchema,
   workOrderContextShape,
+  projectShapeShape,
   proposalResultShape,
   rootProposalResultShape,
 } from "./entity-schema.js";
@@ -175,6 +177,21 @@ export function registerTools(server: McpServer, store: Store): void {
       }));
       return ok({ workOrders });
     },
+  );
+
+  server.registerTool(
+    "get_project_shape",
+    {
+      title: "Get project shape",
+      description:
+        "Read-only, one-call populated-project signal: classify the project as 'empty' (never seeded), " +
+        "'fresh' (exactly the seeded root pair, untouched — safe to survey into), or 'populated' " +
+        "(someone already owns part of the graph), with the product root's title, entity counts by type, " +
+        "and the pending-suggestion count. Records nothing — this is not a context handoff.",
+      inputSchema: {},
+      outputSchema: projectShapeShape,
+    },
+    async () => ok({ ...projectShape(store) }),
   );
 
   server.registerTool(

@@ -3,9 +3,11 @@
 How to run the Kiln MCP server and drive the work-order loop from Claude Code
 (or any MCP client that speaks streamable HTTP). This is the Phase-1 loop:
 `list_ready_work_orders` → `get_work_order` → implement → `update_work_order_status`.
-Two further tools, `propose_feature` and `propose_root_overview` (§5), are
-the survey surface — the ONLY document writes that exist over MCP, and both
-are gated: proposals land as pending suggestions a human resolves in the app.
+Three further tools (§5) are the survey surface: `get_project_shape` (the
+read-only populated-project pre-flight) plus `propose_feature` and
+`propose_root_overview` — the ONLY document writes that exist over MCP, and
+both are gated: proposals land as pending suggestions a human resolves in the
+app.
 
 ## 1. Build and seed
 
@@ -100,10 +102,10 @@ claude mcp list
 # kiln: http://127.0.0.1:3777/mcp (HTTP) - ✔ Connected
 ```
 
-Then start `claude` in your project. The five tools appear as
+Then start `claude` in your project. The six tools appear as
 `mcp__kiln__list_ready_work_orders`, `mcp__kiln__get_work_order`,
-`mcp__kiln__update_work_order_status`, `mcp__kiln__propose_feature`, and
-`mcp__kiln__propose_root_overview`.
+`mcp__kiln__update_work_order_status`, `mcp__kiln__get_project_shape`,
+`mcp__kiln__propose_feature`, and `mcp__kiln__propose_root_overview`.
 
 Other MCP clients: any client that supports streamable HTTP works the same way —
 point it at the URL and supply the `Authorization` header. With the TypeScript
@@ -215,20 +217,40 @@ Ask the agent to work the board, or call the tools directly:
      Invalid completion report — no receipt recorded, status unchanged: report.summary: summary must not be empty or whitespace-only
      ```
 
-## 5. Survey proposals — the gated document writes
+## 5. The survey surface — pre-flight and gated document writes
 
-`propose_feature` and `propose_root_overview` exist for **survey agents**
-bootstrapping a brownfield repository into a fresh Kiln project (the
-procedure lives in
-[`skills/kiln-survey/SKILL.md`](../skills/kiln-survey/SKILL.md)). They are
-the only document-write paths over MCP, and both are deliberately **gated**:
-there are no ungated document writes. The invariant, precisely:
+`get_project_shape`, `propose_feature`, and `propose_root_overview` exist for
+**survey agents** bootstrapping a brownfield repository into a fresh Kiln
+project (the procedure lives in
+[`skills/kiln-survey/SKILL.md`](../skills/kiln-survey/SKILL.md)). The propose
+tools are the only document-write paths over MCP, and both are deliberately
+**gated**: there are no ungated document writes. The invariant, precisely:
 
 > Document writes over MCP exist ONLY as gated proposals via
 > `propose_feature` and `propose_root_overview` — the proposed bodies land
 > as pending suggestions a human accepts or rejects in the app; nothing is
 > committed by either call. Execution agents (the kiln-execute loop) still
 > never author documents.
+
+### `get_project_shape` — the populated-project pre-flight
+
+Read-only, no input, records nothing (a shape read is not a context handoff —
+no receipt). It answers the one question a surveyor must settle before
+proposing anything: *is this project safe to survey into?* Before this tool
+existed, `list_ready_work_orders` was the only signal, and a populated
+project with no ready work orders was indistinguishable from a fresh one.
+Output:
+
+| Field | Shape | What it is |
+|---|---|---|
+| `shape` | `empty \| fresh \| populated` | `empty`: no entities at all — the store was never seeded, so the propose tools will fail for want of a product root. `fresh`: exactly the seeded pair — one parentless requirement with an empty body, its one `details` blueprint still empty or the seeded fill-in template, nothing else, no pending suggestions — safe to survey into. `populated`: anything else — someone (human or prior survey) already owns part of the graph; v1 does not merge. |
+| `rootTitle` | string \| null | The single parentless requirement's title (confirm it matches the project the human named); `null` when there are none or several. |
+| `counts` | `{ requirements, blueprints, workOrders, artifacts }` | Entity counts by type — the evidence behind the classification, worth reporting when warning about a populated target. |
+| `pendingSuggestions` | number | Pending suggestions across all entities. Any pending suggestion makes the project non-fresh: proposals already await review. |
+
+The classification is authoritative for the *store's contents*; it cannot
+tell you whether the bound store is the one the human *intended* — pair it
+with the `rootTitle` check and the startup-log line from §2.
 
 ### `propose_feature` — one feature per call
 

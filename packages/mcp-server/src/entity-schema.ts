@@ -83,6 +83,20 @@ export const rootProposalResultShape = {
   suggestionIds: z.array(z.string()),
 };
 
+// Output shape of `get_project_shape`: core's ProjectShape verbatim — the
+// one-call populated-project signal for surveying agents.
+export const projectShapeShape = {
+  shape: z.enum(["empty", "fresh", "populated"]),
+  rootTitle: z.string().nullable(),
+  counts: z.object({
+    requirements: z.number(),
+    blueprints: z.number(),
+    workOrders: z.number(),
+    artifacts: z.number(),
+  }),
+  pendingSuggestions: z.number(),
+};
+
 // An agent's completion report — required when closing in_progress → done, the
 // return half of the handoff loop. Mirror of core's CompletionReport, which
 // re-validates authoritatively inside recordCompletionReceipt (rejecting

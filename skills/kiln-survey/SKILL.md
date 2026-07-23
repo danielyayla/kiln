@@ -52,13 +52,23 @@ survey **before proposing anything**.
 
 Ask the human (or confirm from their request) which project the server is
 bound to and that it was freshly created for this survey. Then run the
-populated-project check:
+populated-project check — one read-only call:
 
-- Call `list_ready_work_orders`. A fresh project has no work orders, so any
-  entry proves the project is populated → **warn and stop**.
-- The MCP surface deliberately has no entity listing, so this check is
-  partial; the human's confirmation that the project is fresh is part of the
-  precondition, not a formality.
+- Call `get_project_shape`. It classifies the bound project as `empty`,
+  `fresh`, or `populated` and reports the root title, entity counts by type,
+  and the pending-suggestion count.
+- **`fresh`** — the seeded root pair, untouched. Confirm the reported
+  `rootTitle` matches the project the human named, then proceed.
+- **`empty`** — the store was never seeded; `propose_root_overview` and
+  root-level `propose_feature` calls will fail for want of a product root.
+  Ask the human to create the project properly (app: New Project; CLI:
+  `kiln projects create <name>`), then re-check.
+- **`populated`** — someone already owns part of the graph → **warn and
+  stop**, reporting the counts. v1 does not merge into populated graphs.
+
+This check is authoritative for the *store's contents*; it cannot tell you
+whether the bound store is the one the human *intended* — that is what the
+`rootTitle` confirmation is for.
 
 ### 2. Survey the repository — evidence before invention
 
@@ -363,8 +373,9 @@ suggestion means a proposal (possibly your own earlier call) awaits review —
 the human resolves it in the app; never work around the lock.
 
 **Populated project discovered mid-survey** — any signal that the target
-holds real documents beyond the seeded root (ready work orders, an ambiguous
-root, a non-pristine root pair, the human mentioning existing content): stop
+holds real documents beyond the seeded root (a `populated` `get_project_shape`,
+an ambiguous root, a non-pristine root pair, the human mentioning existing
+content): stop
 proposing immediately, report what you already proposed, and let the human
 decide. v1 does not merge into populated graphs.
 

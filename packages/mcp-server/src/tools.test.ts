@@ -26,9 +26,10 @@ afterEach(async () => {
 });
 
 describe("MCP tools", () => {
-  it("lists all five tools", async () => {
+  it("lists all six tools", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "get_project_shape",
       "get_work_order",
       "list_ready_work_orders",
       "propose_feature",
@@ -693,5 +694,71 @@ describe("propose_root_overview", () => {
     const res = await call(rootProposal());
     expect(res.isError).toBe(true);
     expect(errorText(res)).toContain("no details blueprint");
+  });
+});
+
+describe("get_project_shape", () => {
+  // Each shape gets its own store + in-memory client, mirroring the fresh-store
+  // setup propose_root_overview uses.
+  const openClient = async (s: SqliteStore) => {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const c = new Client({ name: "test-client-shape", version: "0.0.0" });
+    await Promise.all([buildMcpServer(s).connect(serverTransport), c.connect(clientTransport)]);
+    return c;
+  };
+
+  const shapeOf = async (c: Client) => {
+    const res = await c.callTool({ name: "get_project_shape", arguments: {} });
+    expect(res.isError).toBeFalsy();
+    return res.structuredContent as {
+      shape: string;
+      rootTitle: string | null;
+      counts: { requirements: number; blueprints: number; workOrders: number; artifacts: number };
+      pendingSuggestions: number;
+    };
+  };
+
+  it("reports an unseeded store as empty", async () => {
+    const s = new SqliteStore(":memory:");
+    const c = await openClient(s);
+    try {
+      expect(await shapeOf(c)).toEqual({
+        shape: "empty",
+        rootTitle: null,
+        counts: { requirements: 0, blueprints: 0, workOrders: 0, artifacts: 0 },
+        pendingSuggestions: 0,
+      });
+    } finally {
+      await c.close();
+      s.close();
+    }
+  });
+
+  it("reports a fresh-seeded project as fresh with its root title", async () => {
+    const s = new SqliteStore(":memory:");
+    seedProject(s, "Demo");
+    const c = await openClient(s);
+    try {
+      expect(await shapeOf(c)).toEqual({
+        shape: "fresh",
+        rootTitle: "Demo",
+        counts: { requirements: 1, blueprints: 1, workOrders: 0, artifacts: 0 },
+        pendingSuggestions: 0,
+      });
+    } finally {
+      await c.close();
+      s.close();
+    }
+  });
+
+  it("reports the seeded demo chain as populated — even with zero ready work orders", async () => {
+    // Drain readiness: the fresh/populated distinction must not depend on it.
+    store.updateEntity(chain.workOrderId, { status: "cancelled" });
+    const list = await client.callTool({ name: "list_ready_work_orders", arguments: {} });
+    expect((list.structuredContent as { workOrders: unknown[] }).workOrders).toEqual([]);
+
+    const shape = await shapeOf(client);
+    expect(shape.shape).toBe("populated");
+    expect(shape.counts.workOrders).toBeGreaterThan(0);
   });
 });

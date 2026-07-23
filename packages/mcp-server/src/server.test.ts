@@ -66,7 +66,7 @@ describe("HTTP bearer auth", () => {
 });
 
 describe("streamable HTTP MCP client", () => {
-  it("connects with a bearer token and lists the five tools", async () => {
+  it("connects with a bearer token and lists the six tools", async () => {
     const client = new Client({ name: "http-test-client", version: "0.0.0" });
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl), {
       requestInit: { headers: { authorization: `Bearer ${TOKEN}` } },
@@ -75,6 +75,7 @@ describe("streamable HTTP MCP client", () => {
     try {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual([
+        "get_project_shape",
         "get_work_order",
         "list_ready_work_orders",
         "propose_feature",
