@@ -19,6 +19,7 @@ const entity = (id: string, type: Entity["type"], title: string, body = "body"):
   body,
   status: null,
   workType: null,
+  criticality: null,
   assignee: null,
   createdAt: "2026-07-11T00:00:00.000Z",
   updatedAt: "2026-07-11T00:00:00.000Z",
