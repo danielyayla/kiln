@@ -11,7 +11,9 @@ import type { Store } from "../store";
 // Grouping rule: a blueprint belongs to the requirement it `details`; a
 // requirement anchors its own group; anything else (work order, artifact)
 // stands alone. Groups are ordered by the anchor entity's creation time —
-// survey proposals land in tree order, so the walk mirrors the tree.
+// survey proposals land in tree order, so the walk mirrors the tree. createdAt
+// has only millisecond precision and survey entities are created back-to-back,
+// so ties break on seq (store insertion order) to keep the walk deterministic.
 
 export interface ProposalItem {
   entityId: Id;
@@ -35,7 +37,7 @@ const ROLE_ORDER: Partial<Record<EntityType, number>> = {
 };
 
 const byCreation = (a: Entity, b: Entity) =>
-  a.createdAt === b.createdAt ? a.id.localeCompare(b.id) : a.createdAt.localeCompare(b.createdAt);
+  a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq;
 
 export function pendingProposals(store: Store): ProposalGroup[] {
   const types: EntityType[] = ["requirement", "blueprint", "work_order", "artifact"];

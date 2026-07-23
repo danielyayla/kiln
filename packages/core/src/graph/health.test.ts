@@ -13,6 +13,7 @@ const ent = (over: Partial<Entity>): Entity => ({
   workType: null,
   criticality: null,
   assignee: null,
+  seq: 1,
   createdAt: "t",
   updatedAt: "t",
   ...over,

@@ -31,6 +31,7 @@ interface EntityRow {
   work_type: string | null;
   criticality: string | null;
   assignee: string | null;
+  seq: number;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +46,7 @@ function toEntity(r: EntityRow): Entity {
     workType: (r.work_type as WorkType | null) ?? null,
     criticality: (r.criticality as Criticality | null) ?? null,
     assignee: r.assignee ?? null,
+    seq: r.seq,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -176,7 +178,9 @@ export class SqliteStore implements Store {
   }
 
   getEntity(id: Id): Entity | null {
-    const row = this.db.prepare(`SELECT * FROM entities WHERE id = ?`).get(id) as unknown as
+    const row = this.db
+      .prepare(`SELECT *, rowid AS seq FROM entities WHERE id = ?`)
+      .get(id) as unknown as
       | EntityRow
       | undefined;
     return row ? toEntity(row) : null;
@@ -184,7 +188,7 @@ export class SqliteStore implements Store {
 
   listEntities(type: EntityType): Entity[] {
     const rows = this.db
-      .prepare(`SELECT * FROM entities WHERE type = ? ORDER BY created_at`)
+      .prepare(`SELECT *, rowid AS seq FROM entities WHERE type = ? ORDER BY created_at, rowid`)
       .all(type) as unknown as EntityRow[];
     return rows.map(toEntity);
   }
@@ -269,8 +273,8 @@ export class SqliteStore implements Store {
   linked(id: Id, type: LinkType): Entity[] {
     const rows = this.db
       .prepare(
-        `SELECT e.* FROM links l JOIN entities e ON e.id = l.to_id
-         WHERE l.from_id = ? AND l.type = ? ORDER BY e.created_at`,
+        `SELECT e.*, e.rowid AS seq FROM links l JOIN entities e ON e.id = l.to_id
+         WHERE l.from_id = ? AND l.type = ? ORDER BY e.created_at, e.rowid`,
       )
       .all(id, type) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -279,8 +283,8 @@ export class SqliteStore implements Store {
   linkedFrom(id: Id, type: LinkType): Entity[] {
     const rows = this.db
       .prepare(
-        `SELECT e.* FROM links l JOIN entities e ON e.id = l.from_id
-         WHERE l.to_id = ? AND l.type = ? ORDER BY e.created_at`,
+        `SELECT e.*, e.rowid AS seq FROM links l JOIN entities e ON e.id = l.from_id
+         WHERE l.to_id = ? AND l.type = ? ORDER BY e.created_at, e.rowid`,
       )
       .all(id, type) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -299,7 +303,8 @@ export class SqliteStore implements Store {
            UNION
            SELECT l.from_id FROM links l JOIN sub ON l.to_id = sub.id AND l.type = 'child_of'
          )
-         SELECT e.* FROM entities e JOIN sub ON e.id = sub.id ORDER BY e.created_at`,
+         SELECT e.*, e.rowid AS seq FROM entities e JOIN sub ON e.id = sub.id
+         ORDER BY e.created_at, e.rowid`,
       )
       .all(rootId) as unknown as EntityRow[];
     return rows.map(toEntity);
@@ -307,7 +312,10 @@ export class SqliteStore implements Store {
 
   workOrdersByStatus(status: WorkOrderStatus): Entity[] {
     const rows = this.db
-      .prepare(`SELECT * FROM entities WHERE type='work_order' AND status=? ORDER BY created_at`)
+      .prepare(
+        `SELECT *, rowid AS seq FROM entities WHERE type='work_order' AND status=?
+         ORDER BY created_at, rowid`,
+      )
       .all(status) as unknown as EntityRow[];
     return rows.map(toEntity);
   }
@@ -515,7 +523,7 @@ export class SqliteStore implements Store {
   searchArtifacts(query: string): Entity[] {
     const rows = this.db
       .prepare(
-        `SELECT e.* FROM entities_fts
+        `SELECT e.*, e.rowid AS seq FROM entities_fts
          JOIN entities e ON e.id = entities_fts.id
          WHERE entities_fts MATCH ? AND entities_fts.type = 'artifact'
          ORDER BY rank`,

@@ -36,6 +36,10 @@ export interface Entity {
   workType: WorkType | null;
   criticality: Criticality | null;
   assignee: string | null;
+  // Store-assigned insertion sequence (the SQLite rowid). createdAt has only
+  // millisecond precision, so entities created back-to-back can tie; seq is
+  // the canonical tie-breaker wherever creation order matters.
+  seq: number;
   createdAt: string;
   updatedAt: string;
 }

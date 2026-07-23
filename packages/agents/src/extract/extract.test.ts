@@ -71,7 +71,9 @@ describe("buildExtractPrompt", () => {
       body: "the approach",
       status: null,
       workType: null,
+      criticality: null,
       assignee: null,
+      seq: 1,
       createdAt: "t",
       updatedAt: "t",
     };
@@ -91,7 +93,9 @@ describe("buildExtractPrompt", () => {
       body: "the approach",
       status: null,
       workType: null,
+      criticality: null,
       assignee: null,
+      seq: 1,
       createdAt: "t",
       updatedAt: "t",
     };
