@@ -13,6 +13,7 @@ import {
   runProjectsUse,
   runReview,
   runSetStatus,
+  runVerify,
   runShow,
   runSuggestions,
 } from "./commands.js";
@@ -32,6 +33,8 @@ const USAGE = `kiln — authoring CLI (store: KILN_DB_PATH, default ~/.kiln/kiln
   kiln review <entityId> [--suggest]             flag ambiguity/gaps/conflicts/duplication; --suggest also
                                                  files the proposed fixes as a suggestion (needs model access)
   kiln status <workOrderId> <status> [--force]   set a work order's status (--force overrides the draft→ready completeness gate)
+  kiln verify <workOrderId>                      judge a done work order's completion receipts against its
+                                                 acceptance criteria; records a verification receipt (needs model access)
   kiln show <entityId>                           print an entity
   kiln export <dir> [--force]                    write the whole graph as markdown files
                                                  (refuses a non-empty dir without --force)
@@ -66,8 +69,13 @@ function parseIndexes(raw: string): number[] {
   });
 }
 
-function printEntity(prefix: string, e: { id: string; type: string; title: string; status: string | null }): void {
-  console.log(`${prefix} ${e.type} ${e.id} — ${e.title}${e.status ? ` [${e.status}]` : ""}`);
+function printEntity(
+  prefix: string,
+  e: { id: string; type: string; title: string; status: string | null; criticality?: string | null },
+): void {
+  // Routine criticality stays quiet, mirroring the unset default everywhere else.
+  const tags = [e.status, e.criticality !== "routine" ? e.criticality : null].filter(Boolean);
+  console.log(`${prefix} ${e.type} ${e.id} — ${e.title}${tags.length > 0 ? ` [${tags.join(", ")}]` : ""}`);
 }
 
 async function main(): Promise<void> {
@@ -207,6 +215,20 @@ async function main(): Promise<void> {
         const [workOrderId, status] = args.filter((a) => a !== "--force");
         if (!workOrderId || !status) fail("usage: kiln status <workOrderId> <status> [--force]");
         printEntity("updated", runSetStatus(store, workOrderId, status, { force }));
+        break;
+      }
+      case "verify": {
+        const [workOrderId] = args;
+        if (!workOrderId) fail("usage: kiln verify <workOrderId>");
+        const receipt = await runVerify(store, provider(), workOrderId);
+        console.log(`verification ${receipt.id} on ${receipt.workOrderId} — overall: ${receipt.overall}`);
+        for (const cr of receipt.criteria) {
+          console.log(`  [${cr.status}] ${cr.criterion}`);
+          console.log(`      ${cr.reason}`);
+        }
+        if (receipt.criteria.length === 0) {
+          console.log("  (no acceptance criteria to judge — see the overall verdict)");
+        }
         break;
       }
       case "export": {

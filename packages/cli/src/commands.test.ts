@@ -15,6 +15,7 @@ import {
   runReview,
   runSetStatus,
   runSuggestions,
+  runVerify,
   templateFor,
 } from "./commands.js";
 
@@ -280,5 +281,58 @@ describe("extract", () => {
     expect(some.accepted.map((w) => w.title)).toEqual(["Second"]);
 
     await expect(runExtract(store, provider, blueprint.id, [5])).rejects.toThrow(/out of range/);
+  });
+});
+
+describe("verify (the CLI trigger path)", () => {
+  const verdictInput = {
+    criteria: [{ criterion: "works", status: "met", reason: "receipt pastes passing test output" }],
+    overall: "met",
+  };
+
+  function doneWorkOrder(): string {
+    const wo = runCreate(store, "work_order", "W", "## Acceptance criteria\n- [ ] works");
+    store.updateEntity(wo.id, { status: "done" });
+    store.saveCompletionReceipt({
+      id: `cr-${wo.id}`,
+      workOrderId: wo.id,
+      summary: "built it",
+      verification: "vitest run: all green",
+      commits: [],
+      filesTouched: [],
+      createdAt: "2026-07-23T10:00:00.000Z",
+    });
+    return wo.id;
+  }
+
+  it("records a verification receipt on a done work order and appends on re-run", async () => {
+    const woId = doneWorkOrder();
+    const provider = scriptedProvider("emit_verdict", [verdictInput]);
+
+    const receipt = await runVerify(store, provider, woId);
+    expect(receipt).toMatchObject({ workOrderId: woId, ...verdictInput });
+    expect(store.listVerificationReceipts(woId).map((r) => r.id)).toEqual([receipt.id]);
+
+    // The verify prompt carries the acceptance criteria and the testimony.
+    expect(provider.requests[0].system).toContain("- [ ] works");
+    expect(provider.requests[0].system).toContain("vitest run: all green");
+
+    // Append-only: a second pass adds a receipt, chronologically after the first.
+    const again = await runVerify(store, provider, woId);
+    expect(store.listVerificationReceipts(woId).map((r) => r.id)).toEqual([receipt.id, again.id]);
+  });
+
+  it("refuses non-done and non-work-order targets, recording nothing", async () => {
+    const provider = scriptedProvider("emit_verdict", [verdictInput]);
+
+    const open = runCreate(store, "work_order", "Open", "b");
+    await expect(runVerify(store, provider, open.id)).rejects.toThrow(/not done/);
+    expect(store.listVerificationReceipts(open.id)).toEqual([]);
+
+    const req = runCreate(store, "requirement", "R");
+    await expect(runVerify(store, provider, req.id)).rejects.toThrow(ConstraintError);
+    await expect(runVerify(store, provider, "nope")).rejects.toThrow(NotFoundError);
+    // Refusals happen before any model call.
+    expect(provider.requests).toHaveLength(0);
   });
 });

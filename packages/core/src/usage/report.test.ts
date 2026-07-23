@@ -109,8 +109,8 @@ describe("usageReport", () => {
     const modelSum = r.byModel.reduce((s, m) => s + m.totalTokens, 0);
     expect(featureSum).toBe(r.totals.totalTokens);
     expect(modelSum).toBe(r.totals.totalTokens);
-    // all four features present in fixed order, even when unused
-    expect(r.byFeature.map((f) => f.feature)).toEqual(["draft", "extract", "chat", "review"]);
+    // every feature present in fixed order, even when unused
+    expect(r.byFeature.map((f) => f.feature)).toEqual(["draft", "extract", "chat", "review", "verify"]);
     expect(r.byFeature[1].totalTokens).toBe(0); // extract unused
     // models sorted for stable output
     expect(r.byModel.map((m) => m.model)).toEqual(["claude-haiku-4-5-20251001", "claude-opus-4-8"]);

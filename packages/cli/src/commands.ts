@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   applySuggestion,
+  assembleWorkOrderContext,
   ConstraintError,
   createProject,
   ENTITY_TYPES,
@@ -10,6 +11,7 @@ import {
   NotFoundError,
   readRegistry,
   readyGateBlockers,
+  recordVerificationReceipt,
   resolveAuthoringSkills,
   DEFAULT_STATUS,
   seedProject,
@@ -25,6 +27,7 @@ import {
   type Revision,
   type Store,
   type Suggestion,
+  type VerificationReceipt,
   type WorkOrderStatus,
   type WorkType,
 } from "@kiln/core";
@@ -36,6 +39,7 @@ import {
   extractWorkOrders,
   REQUIREMENT_TEMPLATE,
   reviewDocument,
+  verifyWorkOrder,
   type DraftTemplate,
   type Finding,
   type ModelProvider,
@@ -192,6 +196,35 @@ export async function runReview(
     return { findings, suggestion, filed: true };
   }
   return { findings, suggestion, filed: false };
+}
+
+// Independent verification (verification & criticality): judge a done work
+// order's completion receipts against its acceptance criteria and record the
+// verdict as an append-only verification receipt. The done-only rule lives
+// here — when verification may run is caller policy (core's
+// recordVerificationReceipt is status-agnostic), and the MCP bridge
+// deliberately has no verify surface: the closing agent must not verify
+// itself. A refused run records nothing.
+export async function runVerify(
+  store: Store,
+  provider: ModelProvider,
+  workOrderId: Id,
+): Promise<VerificationReceipt> {
+  const workOrder = mustGet(store, workOrderId);
+  if (workOrder.type !== "work_order") {
+    throw new ConstraintError(`entity ${workOrderId} is a ${workOrder.type}, not a work_order`);
+  }
+  if (workOrder.status !== "done") {
+    throw new ConstraintError(
+      `verification judges completed work — ${workOrderId} is ${workOrder.status ?? DEFAULT_STATUS}, not done`,
+    );
+  }
+  const verdict = await verifyWorkOrder(
+    provider,
+    assembleWorkOrderContext(store, workOrderId),
+    store.listCompletionReceipts(workOrderId),
+  );
+  return recordVerificationReceipt(store, workOrderId, verdict);
 }
 
 export function runSetStatus(store: Store, workOrderId: Id, status: string, opts?: { force?: boolean }): Entity {

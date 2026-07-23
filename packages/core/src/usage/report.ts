@@ -64,7 +64,7 @@ export interface UsageReport {
   byDay: UsageBucket[]; // last 30 days, oldest first, empty buckets zeroed
   byWeek: UsageBucket[]; // last 12 ISO weeks
   byMonth: UsageBucket[]; // last 12 months
-  byFeature: ({ feature: ModelUsageFeature } & UsageBreakdownRow)[]; // all four, fixed order
+  byFeature: ({ feature: ModelUsageFeature } & UsageBreakdownRow)[]; // every feature, fixed order
   byModel: ({ model: string } & UsageBreakdownRow)[]; // models present, sorted
 }
 

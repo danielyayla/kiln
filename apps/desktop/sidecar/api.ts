@@ -13,6 +13,7 @@ import {
   ConstraintError,
   contextHealth,
   criticalPath,
+  CRITICALITIES,
   DEFAULT_STATUS,
   documentHealth,
   EditError,
@@ -26,6 +27,7 @@ import {
   pendingProposals,
   projectPulse,
   readAuthoringSkillDocs,
+  recordVerificationReceipt,
   readyGateBlockers,
   resolveAuthoringSkills,
   writeAuthoringSkillDocs,
@@ -47,6 +49,7 @@ import {
   refineTurn,
   REQUIREMENT_TEMPLATE,
   reviewDocument,
+  verifyWorkOrder,
   withUsageRecording,
   WorkOrderCandidate,
   type DraftTemplate,
@@ -72,6 +75,8 @@ const PatchEntity = z.object({
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
   assignee: z.string().nullable().optional(),
   workType: z.enum(WORK_TYPES).nullable().optional(),
+  // Passthrough like workType: the Store enforces the work_order-only rule.
+  criticality: z.enum(CRITICALITIES).nullable().optional(),
 });
 
 const CreateLink = z.object({
@@ -413,6 +418,12 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
   app.get("/entities/:id/completion-receipts", (c) =>
     c.json(store.listCompletionReceipts(c.req.param("id"))),
   );
+  // The judgment half of the receipt loop (verification & criticality):
+  // append-only verification verdicts, oldest first. Same contract as
+  // completion receipts — read-only, [] for ids without any.
+  app.get("/entities/:id/verification-receipts", (c) =>
+    c.json(store.listVerificationReceipts(c.req.param("id"))),
+  );
 
   // Per-document authoring-standards checks (methodology layer 2). Read-only,
   // any entity type; reports, never blocks.
@@ -566,6 +577,35 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
         skills: resolveAuthoringSkills(store),
       });
       return { findings, ops: suggestion?.ops ?? null };
+    }),
+  );
+
+  // Independent verification (verification & criticality): judge a done work
+  // order's completion receipts against its acceptance criteria and record
+  // the verdict as an append-only verification receipt. Human-triggered only
+  // — the MCP bridge deliberately has no verify tool (the closing agent must
+  // not verify itself). The done-only rule lives here because when
+  // verification may run is caller policy (core's recordVerificationReceipt
+  // is status-agnostic); a refused request records nothing.
+  app.post("/entities/:id/verify", (c) =>
+    withProvider(c, "verify", async (provider) => {
+      const id = c.req.param("id");
+      const workOrder = store.getEntity(id);
+      if (!workOrder) throw new NotFoundError(id);
+      if (workOrder.type !== "work_order") {
+        throw new ConstraintError(`entity ${id} is a ${workOrder.type}, not a work_order`);
+      }
+      if (workOrder.status !== "done") {
+        throw new ConstraintError(
+          `verification judges completed work — ${id} is ${workOrder.status ?? DEFAULT_STATUS}, not done`,
+        );
+      }
+      const verdict = await verifyWorkOrder(
+        provider,
+        assembleWorkOrderContext(store, id),
+        store.listCompletionReceipts(id),
+      );
+      return recordVerificationReceipt(store, id, verdict);
     }),
   );
 

@@ -53,7 +53,7 @@ export interface Revision {
   createdAt: string;
 }
 
-export const MODEL_USAGE_FEATURES = ["draft", "extract", "chat", "review"] as const;
+export const MODEL_USAGE_FEATURES = ["draft", "extract", "chat", "review", "verify"] as const;
 export type ModelUsageFeature = (typeof MODEL_USAGE_FEATURES)[number];
 
 // One row per model call made through the app (AI settings & usage): which

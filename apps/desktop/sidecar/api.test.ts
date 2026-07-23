@@ -1342,3 +1342,131 @@ describe("authoring-skills flow-through to agent calls", () => {
     expect(requests[0].system).not.toContain("## Capability");
   });
 });
+
+describe("verification & criticality (the sidecar trigger path)", () => {
+  const verdictInput = {
+    criteria: [
+      { criterion: "behavior X observable", status: "met", reason: "the receipt pastes real test output for X" },
+      { criterion: "docs updated", status: "undecidable", reason: "the receipts are silent on docs" },
+    ],
+    overall: "undecidable",
+  };
+
+  function doneWorkOrder(): Entity {
+    const wo = store.createEntity({
+      type: "work_order",
+      title: "W",
+      body: "## Acceptance criteria\n- [ ] behavior X observable\n- [ ] docs updated",
+      status: "done",
+    });
+    store.saveCompletionReceipt({
+      id: `cr-${wo.id}`,
+      workOrderId: wo.id,
+      summary: "built X",
+      verification: "vitest run: 12 passed",
+      commits: [],
+      filesTouched: [],
+      createdAt: "2026-07-23T10:00:00.000Z",
+    });
+    return wo;
+  }
+
+  it("PATCH sets criticality on a work order; the store rejects it elsewhere", async () => {
+    const wo = store.createEntity({ type: "work_order", title: "W", body: "b" });
+    const patched = await app.request(`/entities/${wo.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ criticality: "critical" }),
+    });
+    expect(patched.status).toBe(200);
+    expect((await json<Entity>(patched)).criticality).toBe("critical");
+    expect(store.getEntity(wo.id)?.criticality).toBe("critical");
+
+    // Outside the closed set → Zod 400; on a non-work-order → the store's
+    // ConstraintError 400. Neither changes state.
+    const badValue = await app.request(`/entities/${wo.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ criticality: "urgent" }),
+    });
+    expect(badValue.status).toBe(400);
+
+    const req = store.createEntity({ type: "requirement", title: "R" });
+    const wrongType = await app.request(`/entities/${req.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ criticality: "critical" }),
+    });
+    expect(wrongType.status).toBe(400);
+    expect(store.getEntity(req.id)?.criticality).toBeNull();
+  });
+
+  it("POST verify on a done order records exactly one receipt and returns the verdict", async () => {
+    const wo = doneWorkOrder();
+    const verifyApp = buildApi(store, {
+      createProvider: () => scriptedProvider("emit_verdict", verdictInput),
+    });
+
+    const res = await verifyApp.request(`/entities/${wo.id}/verify`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const receipt = await json<{ id: string; workOrderId: string; overall: string; criteria: unknown[]; createdAt: string }>(res);
+    expect(receipt).toMatchObject({ workOrderId: wo.id, ...verdictInput });
+    expect(receipt.id).toBeTruthy();
+    expect(receipt.createdAt).toBeTruthy();
+
+    expect(store.listVerificationReceipts(wo.id)).toHaveLength(1);
+    expect(store.listVerificationReceipts(wo.id)[0].id).toBe(receipt.id);
+  });
+
+  it("verify refuses non-done and non-work-order targets loudly, recording nothing", async () => {
+    const verifyApp = buildApi(store, {
+      createProvider: () => scriptedProvider("emit_verdict", verdictInput),
+    });
+
+    const open = store.createEntity({ type: "work_order", title: "Open", body: "b", status: "in_progress" });
+    const refused = await verifyApp.request(`/entities/${open.id}/verify`, { method: "POST" });
+    expect(refused.status).toBe(400);
+    expect((await json<{ error: string }>(refused)).error).toContain("not done");
+    expect(store.listVerificationReceipts(open.id)).toEqual([]);
+
+    const req = store.createEntity({ type: "requirement", title: "R" });
+    expect((await verifyApp.request(`/entities/${req.id}/verify`, { method: "POST" })).status).toBe(400);
+    expect((await verifyApp.request(`/entities/nope/verify`, { method: "POST" })).status).toBe(404);
+  });
+
+  it("verify 503s when no provider is available, recording nothing", async () => {
+    const wo = doneWorkOrder();
+    const brokenApp = buildApi(store, {
+      createProvider: () => {
+        throw new Error("no API key configured");
+      },
+    });
+    const res = await brokenApp.request(`/entities/${wo.id}/verify`, { method: "POST" });
+    expect(res.status).toBe(503);
+    expect(store.listVerificationReceipts(wo.id)).toEqual([]);
+  });
+
+  it("re-running verify appends a second receipt; both list chronologically", async () => {
+    const wo = doneWorkOrder();
+    const verifyApp = buildApi(store, {
+      createProvider: () => scriptedProvider("emit_verdict", verdictInput),
+    });
+
+    await verifyApp.request(`/entities/${wo.id}/verify`, { method: "POST" });
+    await verifyApp.request(`/entities/${wo.id}/verify`, { method: "POST" });
+
+    const listed = await json<{ id: string; workOrderId: string; createdAt: string }[]>(
+      await verifyApp.request(`/entities/${wo.id}/verification-receipts`),
+    );
+    expect(listed).toHaveLength(2);
+    expect(listed[0].id).not.toBe(listed[1].id);
+    // rowid order = insertion order (robust to same-millisecond timestamps).
+    expect(listed.map((r) => r.id)).toEqual(store.listVerificationReceipts(wo.id).map((r) => r.id));
+    expect(listed[0].createdAt <= listed[1].createdAt).toBe(true);
+
+    // Same contract as completion receipts: [] for ids without any.
+    const req = store.createEntity({ type: "requirement", title: "R" });
+    expect(await json<unknown[]>(await verifyApp.request(`/entities/${req.id}/verification-receipts`))).toEqual([]);
+    expect(await json<unknown[]>(await verifyApp.request(`/entities/nope/verification-receipts`))).toEqual([]);
+  });
+});
