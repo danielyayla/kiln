@@ -411,6 +411,16 @@ export function PulseView({ onSelect }: { onSelect: (id: string) => void }) {
       id: b.id,
       label: `⛔ ${b.title} — blocked by ${b.blocking[0]?.title ?? "an unfinished dependency"}`,
     })),
+    // Done work that matters but carries no clean verdict (verification &
+    // criticality): core sorts critical first and excludes routine; a passing
+    // verification receipt clears the row.
+    ...p.verificationAttention.map((v) => ({
+      key: `verification-${v.id}`,
+      id: v.id,
+      label: `${v.title} — ${v.criticality}, done but ${
+        v.verification === "unverified" ? "unverified" : "verified with failures"
+      }`,
+    })),
     ...(knowledge.data?.workOrders ?? [])
       .filter((w) => w.errors + w.warns > 0)
       .map((w) => ({

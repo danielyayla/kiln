@@ -21,6 +21,7 @@ import type {
   Suggestion,
   SuggestionSource,
   UsageReport,
+  VerificationReceipt,
   WorkOrderContext,
   WorkOrderStatus,
   WorkType,
@@ -113,7 +114,7 @@ export const api = {
     request<Entity>("/entities", { method: "POST", body: JSON.stringify(input) }),
   patchEntity: (
     id: string,
-    patch: Partial<Pick<Entity, "title" | "body" | "status" | "assignee" | "workType">>,
+    patch: Partial<Pick<Entity, "title" | "body" | "status" | "assignee" | "workType" | "criticality">>,
     // overrideGate: the explicit human override for the draft→ready
     // completeness gate; ignored by every other patch.
     opts?: { overrideGate?: boolean },
@@ -136,6 +137,12 @@ export const api = {
   contextReceipts: (id: string) =>
     request<(ContextReceipt & { context: WorkOrderContext })[]>(`/entities/${id}/context/receipts`),
   completionReceipts: (id: string) => request<CompletionReceipt[]>(`/entities/${id}/completion-receipts`),
+  // Verification (verification & criticality): the receipts are append-only,
+  // oldest first; verify runs the independent judge on a DONE work order and
+  // returns the recorded receipt (400 otherwise, 503 without a model key).
+  verificationReceipts: (id: string) =>
+    request<VerificationReceipt[]>(`/entities/${id}/verification-receipts`),
+  verify: (id: string) => request<VerificationReceipt>(`/entities/${id}/verify`, { method: "POST" }),
   link: (fromId: string, toId: string, type: LinkType) =>
     request<{ ok: boolean }>("/links", { method: "POST", body: JSON.stringify({ fromId, toId, type }) }),
   suggestions: (entityId: string) => request<Suggestion[]>(`/entities/${entityId}/suggestions`),

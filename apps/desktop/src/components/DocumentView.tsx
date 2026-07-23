@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Finding, WorkOrderCandidate } from "@kiln/agents";
+import type { Criticality } from "@kiln/core";
 import { api } from "../lib/client";
+import { CRITICALITIES, effectiveCriticality } from "../lib/criticality";
 import { friendlyError } from "../lib/errors";
 import { Editor } from "./Editor";
 import { ProposalWalkBanner } from "./ProposalQueue";
 import { RevisionDiff } from "./RevisionDiff";
-import { Button, useToast } from "./ui";
+import { Button, Select, useToast } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 // Severity → token color for the findings panel chips (WO-C1).
@@ -91,6 +93,20 @@ export function DocumentView({
   const revisions = useQuery({
     queryKey: ["revisions", entityId],
     queryFn: () => api.revisions(entityId),
+  });
+
+  // Criticality (verification & criticality): a plain field PATCH — the
+  // store enforces the work_order-only rule; the selector only renders on
+  // work orders anyway. Board badges/filters and the Pulse attention row all
+  // read this field, so both refresh.
+  const setCriticality = useMutation({
+    mutationFn: (criticality: Criticality) => api.patchEntity(entityId, { criticality }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["entity", entityId], updated);
+      void queryClient.invalidateQueries({ queryKey: ["entities", "work_order"] });
+      void queryClient.invalidateQueries({ queryKey: ["pulse"] });
+    },
+    onError: (e) => toast(friendlyError(e)),
   });
 
   const remove = useMutation({
@@ -185,10 +201,32 @@ export function DocumentView({
           <span>{e.title}</span>
         </nav>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <p style={{ color: color.muted, margin: 0, fontSize: font.sm }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: space(2) }}>
+        <p style={{ color: color.muted, margin: 0, fontSize: font.sm, display: "flex", alignItems: "baseline", gap: space(1) }}>
           {e.type}
           {e.status ? ` · ${e.status}` : ""} · {e.id.slice(0, 8)}
+          {e.type === "work_order" && (
+            <>
+              <span aria-hidden> · </span>
+              <label htmlFor="doc-criticality" style={{ fontSize: font.sm }}>
+                criticality
+              </label>
+              <Select
+                id="doc-criticality"
+                aria-label="criticality"
+                value={effectiveCriticality(e)}
+                disabled={setCriticality.isPending}
+                onChange={(ev) => setCriticality.mutate(ev.target.value as Criticality)}
+                style={{ fontSize: font.xs, padding: `1px ${space(1.5)}px` }}
+              >
+                {CRITICALITIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+            </>
+          )}
         </p>
         <Button
           variant="danger"

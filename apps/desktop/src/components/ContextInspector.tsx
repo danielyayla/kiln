@@ -16,6 +16,7 @@ import {
 } from "../lib/context-inspect";
 import { timeAgo } from "../lib/time";
 import { Badge, BlockedBadge, Button, Chevron, SectionHeader } from "./ui";
+import { VerificationPanel } from "./VerificationPanel";
 import { color, font, radius, space } from "../theme";
 
 // The Context Assembly Inspector (Phase 8, redesigned in Phase 17 around the
@@ -534,13 +535,18 @@ export function ContextInspector({ entityId }: { entityId: string }) {
       </div>
 
       {mode === "receipts" ? (
-        receiptCount === 0 ? (
-          <p style={{ color: color.faint, fontSize: font.sm }}>
-            No handoffs recorded yet — a coding agent fetching this work order over MCP records one.
-          </p>
-        ) : (
-          <ReceiptHistory current={c} receipts={(receipts.data ?? []) as Receipt[]} completions={completions.data ?? []} />
-        )
+        <>
+          {/* The judgment half of the loop, beside the completion receipts:
+              Verify (done orders only) + the per-criterion verdict history. */}
+          <VerificationPanel workOrder={c.workOrder} />
+          {receiptCount === 0 ? (
+            <p style={{ color: color.faint, fontSize: font.sm }}>
+              No handoffs recorded yet — a coding agent fetching this work order over MCP records one.
+            </p>
+          ) : (
+            <ReceiptHistory current={c} receipts={(receipts.data ?? []) as Receipt[]} completions={completions.data ?? []} />
+          )}
+        </>
       ) : (
         <>
           {verdict && (

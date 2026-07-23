@@ -3,6 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Entity, WorkOrderStatus } from "@kiln/core";
 import { api, type WorkOrderReadiness } from "../lib/client";
 import { effectiveWorkType, filterByWorkType, WORK_TYPES, type WorkTypeFilter } from "../lib/work-type";
+import {
+  CRITICALITIES,
+  effectiveCriticality,
+  filterByCriticality,
+  type CriticalityFilter,
+} from "../lib/criticality";
 import { BlockedBadge, Button, Input, RowMenu, SectionHeader, Select, STATUS_COLOR, STATUS_LABEL } from "./ui";
 import { color, font, radius, space } from "../theme";
 
@@ -66,6 +72,32 @@ function WorkTypeBadge({ workOrder }: { workOrder: Entity }) {
       }}
     >
       {workType}
+    </span>
+  );
+}
+
+// The card's criticality badge (verification & criticality): routine is the
+// default and renders unbadged — the badge marks work that matters, warn
+// tone for important, danger for critical.
+function CriticalityBadge({ workOrder }: { workOrder: Entity }) {
+  const criticality = effectiveCriticality(workOrder);
+  if (criticality === "routine") return null;
+  const tone = criticality === "critical" ? color.danger : color.warn;
+  return (
+    <span
+      data-testid={`criticality-${workOrder.id}`}
+      style={{
+        padding: `1px ${space(2)}px`,
+        borderRadius: 999,
+        background: color.chip,
+        border: `1px solid ${tone}`,
+        fontSize: font.xs,
+        color: tone,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      {criticality}
     </span>
   );
 }
@@ -215,6 +247,7 @@ function Card({
           {workOrder.title}
         </strong>
         <WorkTypeBadge workOrder={workOrder} />
+        <CriticalityBadge workOrder={workOrder} />
         {showBlocked && <BlockedBadge title={blockedTitle(readiness!.blocking)} />}
         <Button
           variant="ghost"
@@ -307,7 +340,10 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
   // Type filter (BP-18): one filter over every column, by EFFECTIVE type —
   // `feature` therefore includes unset cards. Session-local, never persisted.
   const [typeFilter, setTypeFilter] = useState<WorkTypeFilter>("all");
-  const visible = filterByWorkType(workOrders.data ?? [], typeFilter);
+  // Criticality filter (verification & criticality): same shape, same
+  // effective-value rule — `routine` includes unset cards. Filters compose.
+  const [criticalityFilter, setCriticalityFilter] = useState<CriticalityFilter>("all");
+  const visible = filterByCriticality(filterByWorkType(workOrders.data ?? [], typeFilter), criticalityFilter);
 
   return (
     <div style={{ display: "grid", gap: space(2) }}>
@@ -326,6 +362,23 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
           {WORK_TYPES.map((t) => (
             <option key={t} value={t}>
               {t}
+            </option>
+          ))}
+        </Select>
+        <label htmlFor="board-criticality-filter" style={{ fontSize: font.xs, color: color.muted, marginLeft: space(2) }}>
+          criticality
+        </label>
+        <Select
+          id="board-criticality-filter"
+          aria-label="filter by criticality"
+          value={criticalityFilter}
+          onChange={(e) => setCriticalityFilter(e.target.value as CriticalityFilter)}
+          style={{ fontSize: font.xs, padding: `1px ${space(1.5)}px` }}
+        >
+          <option value="all">all criticalities</option>
+          {CRITICALITIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
         </Select>
@@ -353,7 +406,9 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
               </SectionHeader>
               {items.length === 0 && (
                 <p style={{ margin: 0, fontSize: font.xs, color: color.faint }}>
-                  {typeFilter === "all" ? EMPTY_HINT[status] : `No ${typeFilter} work orders.`}
+                  {typeFilter === "all" && criticalityFilter === "all"
+                    ? EMPTY_HINT[status]
+                    : "No work orders match the filters."}
                 </p>
               )}
               {items.map((w) => (
