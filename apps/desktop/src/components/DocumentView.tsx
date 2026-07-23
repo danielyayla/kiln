@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Finding } from "@kiln/agents";
+import type { Finding, WorkOrderCandidate } from "@kiln/agents";
 import { api } from "../lib/client";
 import { friendlyError } from "../lib/errors";
 import { Editor } from "./Editor";
+import { ProposalWalkBanner } from "./ProposalQueue";
 import { RevisionDiff } from "./RevisionDiff";
 import { Button, useToast } from "./ui";
 import { color, font, radius, space } from "../theme";
@@ -139,7 +140,7 @@ export function DocumentView({
   });
 
   const accept = useMutation({
-    mutationFn: (candidate: { title: string; body: string }) => api.acceptCandidate(entityId, candidate),
+    mutationFn: (candidate: WorkOrderCandidate) => api.acceptCandidate(entityId, candidate),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["entities", "work_order"] });
       // New work orders surface in the navigator tree (BP-6).
@@ -158,6 +159,7 @@ export function DocumentView({
 
   return (
     <article data-testid="document-view">
+      <ProposalWalkBanner entityId={entityId} onSelect={onSelect} />
       {path.length > 0 && (
         <nav aria-label="Breadcrumbs" style={{ fontSize: font.sm, color: color.muted, marginBottom: space(1) }}>
           {path.map((a) => (

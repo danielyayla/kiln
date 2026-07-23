@@ -353,6 +353,37 @@ describe("sidecar API", () => {
     expect((await json<Entity>(await app.request(`/entities/${requirement.id}`))).body).toBe("keep me");
   });
 
+  it("GET /proposals returns the grouped review queue, requirement first", async () => {
+    const requirement = store.createEntity({ type: "requirement", title: "F — thing", body: "" });
+    const blueprint = store.createEntity({ type: "blueprint", title: "F bp", body: "" });
+    store.link(blueprint.id, requirement.id, "details");
+    store.saveSuggestion({
+      id: "s-bp",
+      targetId: blueprint.id,
+      source: "extract_agent",
+      ops: [{ kind: "insert", anchor: "", text: "bp body" }],
+    });
+    store.saveSuggestion({
+      id: "s-req",
+      targetId: requirement.id,
+      source: "extract_agent",
+      ops: [{ kind: "insert", anchor: "", text: "req body" }],
+    });
+
+    const { groups } = await json<{
+      groups: { title: string; items: { entityId: string; suggestionId: string; opCount: number }[] }[];
+    }>(await app.request("/proposals"));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe("F — thing");
+    expect(groups[0].items.map((i) => i.entityId)).toEqual([requirement.id, blueprint.id]);
+    expect(groups[0].items.map((i) => i.suggestionId)).toEqual(["s-req", "s-bp"]);
+
+    // Resolving both empties the queue.
+    await app.request("/suggestions/s-req", { method: "DELETE" });
+    await app.request("/suggestions/s-bp", { method: "DELETE" });
+    expect(await json<{ groups: unknown[] }>(await app.request("/proposals"))).toEqual({ groups: [] });
+  });
+
   it("refuses a body edit while a suggestion is pending (anchor lock)", async () => {
     const requirement = store.createEntity({ type: "requirement", title: "R", body: "anchored text" });
     store.saveSuggestion({

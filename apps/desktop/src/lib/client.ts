@@ -16,6 +16,7 @@ import type {
   KnowledgeHealth,
   LinkType,
   ProjectPulse,
+  ProposalGroup,
   Revision,
   Suggestion,
   SuggestionSource,
@@ -157,6 +158,7 @@ export const api = {
   acceptCandidate: (blueprintId: string, candidate: WorkOrderCandidate) =>
     request<Entity>(`/entities/${blueprintId}/work-orders`, { method: "POST", body: JSON.stringify(candidate) }),
   readiness: () => request<WorkOrderReadiness[]>("/work-orders/readiness"),
+  proposals: () => request<{ groups: ProposalGroup[] }>("/proposals"),
   pulse: () => request<ProjectPulse>("/pulse"),
   pulseKnowledge: () => request<KnowledgeHealth>("/pulse/knowledge"),
   pulseActivity: (limit?: number) =>

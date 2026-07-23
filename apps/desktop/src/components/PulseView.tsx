@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ActivityEvent, ProjectPulse, WorkOrderHealth, WorkOrderStatus } from "@kiln/core";
 import { api } from "../lib/client";
 import { timeAgo } from "../lib/time";
+import { ProposalsCard } from "./ProposalQueue";
 import { Badge, SectionHeader } from "./ui";
 import { color, font, radius, space } from "../theme";
 
@@ -490,6 +491,8 @@ export function PulseView({ onSelect }: { onSelect: (id: string) => void }) {
           <span style={{ fontSize: font.sm, color: color.muted }}>work orders by status</span>
         </div>
       </section>
+
+      <ProposalsCard onSelect={onSelect} />
 
       {attention.length > 0 ? (
         <section

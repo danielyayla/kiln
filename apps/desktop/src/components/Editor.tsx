@@ -134,7 +134,10 @@ export function Editor({ entity, suggestion }: { entity: Entity; suggestion: Sug
       queryClient.setQueryData(["entity", entity.id], updated);
       void queryClient.invalidateQueries({ queryKey: ["revisions", entity.id] });
     },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["suggestions", entity.id] }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["suggestions", entity.id] });
+      void queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    },
   });
 
   const dismiss = useMutation({
@@ -146,7 +149,10 @@ export function Editor({ entity, suggestion }: { entity: Entity; suggestion: Sug
       return { prior };
     },
     onError: (_e, _v, ctx) => queryClient.setQueryData(["suggestions", entity.id], ctx?.prior),
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["suggestions", entity.id] }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["suggestions", entity.id] });
+      void queryClient.invalidateQueries({ queryKey: ["proposals"] });
+    },
   });
 
   return (

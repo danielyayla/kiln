@@ -23,6 +23,7 @@ import {
   knowledgeHealth,
   LINK_TYPES,
   NotFoundError,
+  pendingProposals,
   projectPulse,
   readAuthoringSkillDocs,
   readyGateBlockers,
@@ -431,6 +432,10 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
     if (!revision) throw new NotFoundError(revisionId);
     return c.json(store.commitBody(id, revision.body));
   });
+
+  // The bulk-review queue: every pending suggestion in the project, grouped
+  // requirement-first per feature (core's pendingProposals ordering).
+  app.get("/proposals", (c) => c.json({ groups: pendingProposals(store) }));
 
   app.post("/suggestions", async (c) => {
     const suggestion = Suggestion.parse({ id: randomUUID(), ...(await c.req.json()) });
