@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started — Kiln</title>
+<meta name="description" content="Start a Kiln project from scratch (greenfield) or bootstrap one from an existing repository (brownfield), based on how Kiln works today.">
+<link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;rect width='100' height='100' rx='20' fill='%23D45F2B'/&gt;&lt;/svg&gt;">
+<style>
+  :root {
+    --bg: #12100e;
+    --bg-raised: #1c1916;
+    --bg-card: #211d19;
+    --border: #35302a;
+    --text: #ece7e1;
+    --text-dim: #a89f94;
+    --accent: #e06a33;
+    --accent-soft: rgba(224, 106, 51, 0.14);
+    --accent-text: #ff8b52;
+    --code-bg: #17140f;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #faf7f4;
+      --bg-raised: #ffffff;
+      --bg-card: #ffffff;
+      --border: #e5ded6;
+      --text: #211c17;
+      --text-dim: #6f665c;
+      --accent: #d45f2b;
+      --accent-soft: rgba(212, 95, 43, 0.10);
+      --accent-text: #b84e1f;
+      --code-bg: #f3ede6;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 24px; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 0; max-width: 820px; margin: 0 auto; padding-left: 24px; padding-right: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; text-decoration: none; color: var(--text); }
+  .brand .mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: inline-block; }
+  nav a { color: var(--text-dim); text-decoration: none; font-size: 14px; margin-left: 22px; }
+  nav a:hover { color: var(--text); }
+
+  main { padding: 48px 0 72px; }
+  h1 { font-size: clamp(30px, 5vw, 42px); letter-spacing: -0.025em; line-height: 1.12; margin-bottom: 14px; }
+  .lede { font-size: 18px; color: var(--text-dim); margin-bottom: 36px; max-width: 680px; }
+
+  h2 { font-size: 26px; letter-spacing: -0.02em; margin: 48px 0 6px; scroll-margin-top: 24px; }
+  h3 { font-size: 17px; margin: 28px 0 6px; letter-spacing: -0.01em; }
+  p { margin: 12px 0; }
+  ul, ol { margin: 12px 0 12px 22px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent-text); }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; background: var(--code-bg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; margin: 16px 0;
+    overflow-x: auto;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.6; color: var(--text); }
+
+  .toc {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 22px; margin-bottom: 40px;
+  }
+  .toc strong { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .toc ul { list-style: none; margin: 10px 0 0; padding: 0; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: var(--text); text-decoration: none; font-size: 15px; }
+  .toc a:hover { color: var(--accent-text); }
+
+  .callout {
+    border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    background: var(--bg-raised); border-radius: 8px;
+    padding: 14px 18px; margin: 20px 0; font-size: 14.5px; color: var(--text-dim);
+  }
+  .callout strong { color: var(--text); }
+
+  .pathgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0 8px; }
+  @media (max-width: 620px) { .pathgrid { grid-template-columns: 1fr; } }
+  .pathcard {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+  }
+  .pathcard .tag {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    color: var(--accent-text); background: var(--accent-soft);
+    border-radius: 20px; padding: 2px 10px; margin-bottom: 10px;
+  }
+  .pathcard h3 { margin-top: 0; }
+  .pathcard p { font-size: 14px; color: var(--text-dim); margin: 4px 0 0; }
+
+  .step-list { counter-reset: s; list-style: none; margin-left: 0; padding-left: 0; }
+  .step-list > li {
+    counter-increment: s; position: relative;
+    padding-left: 44px; margin: 22px 0;
+  }
+  .step-list > li::before {
+    content: counter(s); position: absolute; left: 0; top: 0;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent-text);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .step-list h3 { margin-top: 2px; }
+
+  .pill { display:inline-block; font-size:12px; font-weight:600; border-radius:20px; padding:2px 9px; vertical-align:middle; }
+  .pill-app { color:#5aa9ff; background:rgba(90,169,255,0.14); }
+  .pill-term { color: var(--accent-text); background: var(--accent-soft); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 0 40px; margin-top: 56px;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px;
+    font-size: 13.5px; color: var(--text-dim);
+  }
+  footer a { color: var(--text-dim); }
+  footer a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="./index.html"><span class="mark"></span>Kiln</a>
+  <nav>
+    <a href="./index.html#features">Features</a>
+    <a href="./docs.html">Docs</a>
+    <a href="https://github.com/danielyayla/kiln">GitHub</a>
+  </nav>
+</header>
+
+<div class="wrap">
+<main>
+
+  <h1>Getting started</h1>
+  <p class="lede">
+    Kiln keeps one knowledge graph linking intent → requirement → blueprint → work order,
+    and hands coding agents fully-contextualized work orders over MCP. There are two ways in,
+    depending on whether you’re starting fresh or already have a codebase.
+  </p>
+
+  <div class="pathgrid">
+    <div class="pathcard">
+      <span class="tag">Greenfield</span>
+      <h3>Starting from scratch</h3>
+      <p>No code yet. You author the graph top-down — intent first — and let agents draft the details behind accept/reject gates.</p>
+    </div>
+    <div class="pathcard">
+      <span class="tag">Brownfield</span>
+      <h3>You already have a repo</h3>
+      <p>Bootstrap the graph <em>from</em> the code. A survey agent reads the repository and proposes the feature tree as gated suggestions you review.</p>
+    </div>
+  </div>
+
+  <div class="toc">
+    <strong>On this page</strong>
+    <ul>
+      <li><a href="#concepts">The mental model</a></li>
+      <li><a href="#prereqs">Prerequisites</a></li>
+      <li><a href="#greenfield">Path A — Greenfield (new project)</a></li>
+      <li><a href="#brownfield">Path B — Brownfield (existing repo)</a></li>
+      <li><a href="#handoff">Handing work to a coding agent</a></li>
+      <li><a href="#surfaces">Which surface does what</a></li>
+    </ul>
+  </div>
+
+  <h2 id="concepts">The mental model</h2>
+  <p>
+    Everything in Kiln is one of four linked document types, arranged as a tree under a single
+    <strong>product root</strong>:
+  </p>
+  <ul>
+    <li><strong>Requirement</strong> — a capability the user gains. The root requirement is your
+      PRD; each feature is a requirement <em>child_of</em> the root.</li>
+    <li><strong>Blueprint</strong> — the technical design for a requirement (its <em>details</em>).</li>
+    <li><strong>Work order</strong> — one implementable unit, linked back to the blueprint that
+      designed it (<em>implements</em>).</li>
+    <li><strong>Artifact</strong> — source material and evidence a requirement is built from
+      (<em>references</em>).</li>
+  </ul>
+  <p>
+    The point of the links is <strong>context assembly</strong>: when an agent pulls a work order,
+    it receives the whole chain — work order → blueprint → requirement → root intent, plus
+    referenced artifacts — in a single call. Authoring is always top-down (intent before detail),
+    and every AI-generated change lands as a <strong>suggestion</strong> you accept or reject.
+    Nothing is silently rewritten.
+  </p>
+  <div class="callout">
+    <strong>Two rules worth knowing up front.</strong> A new <em>capability</em> becomes a new
+    feature requirement under the root. Everything else — a bug fix, refactor, polish — is a
+    <em>work order</em> under an existing feature, never a new requirement. And drafts are allowed
+    to be messy; completeness is only checked at the <code>draft → ready</code> boundary.
+  </div>
+
+  <h2 id="prereqs">Prerequisites</h2>
+  <p>How much you need depends on how far you want to go:</p>
+  <ul>
+    <li><strong>Author and review a graph</strong> — just the desktop app. Download it from the
+      <a href="./index.html">home page</a> (macOS / Windows). Add an Anthropic API key in
+      <em>Settings</em> to enable the authoring agents (draft, refine, review, extract).</li>
+    <li><strong>Hand work orders to a coding agent, or survey an existing repo</strong> — this runs
+      through Kiln’s <strong>MCP server</strong> and the packaged skills, which today live in the
+      <a href="https://github.com/danielyayla/kiln">repository</a>. You’ll need
+      <code>git clone</code>, <strong>Node 22.5+</strong>, and <code>pnpm</code>:
+      <pre><code>git clone https://github.com/danielyayla/kiln
+cd kiln
+pnpm install
+pnpm -r build</code></pre>
+    </li>
+  </ul>
+  <div class="callout">
+    <strong>Same store, two doors.</strong> The desktop app and the MCP server read the same
+    project files (one SQLite database per project, listed in <code>~/.kiln/projects.json</code>).
+    You author and review in the app; agents connect over MCP. Switching projects in the app does
+    not move a server that’s already running — a server binds to one project at startup and stays
+    there.
+  </div>
+
+  <h2 id="greenfield">Path A — Greenfield (new project)</h2>
+  <p>You have an idea and no code yet. Author the graph top-down, then generate work orders.</p>
+
+  <ol class="step-list">
+    <li>
+      <h3>Create the project <span class="pill pill-app">app</span></h3>
+      <p>In the desktop app, open the project switcher (top bar) → <strong>New project…</strong> →
+        name it. This creates a fully isolated workspace and seeds two documents: a product-root
+        requirement (titled with your project name) and its <em>system architecture</em> blueprint,
+        both empty and waiting for you.</p>
+      <p>Prefer the terminal? <code>kiln projects create &lt;name&gt;</code> does the same thing.</p>
+    </li>
+    <li>
+      <h3>Write the product overview <span class="pill pill-app">app</span></h3>
+      <p>Open the root requirement in <em>Documents</em> and describe what the product is, who it’s
+        for, its core capabilities, and — importantly — its <strong>non-goals</strong>. Fill in the
+        architecture blueprint with your stack and conventions. This is the context every feature
+        will inherit automatically, so it’s worth doing well.</p>
+    </li>
+    <li>
+      <h3>Add features, one capability each <span class="pill pill-app">app</span></h3>
+      <p>For each capability, create a feature requirement <em>child_of</em> the root. Title it
+        <code>&lt;Name&gt; — &lt;plain-language description&gt;</code> (e.g. “X-ray — intent-to-execution
+        map”). Give each a <strong>Capability / Why / Scope / Non-goals / Success criteria</strong>.
+        You can hand the draft agent your rough notes or an artifact and let it propose the
+        structured requirement and blueprint — you accept or reject.</p>
+    </li>
+    <li>
+      <h3>Cut work orders from a blueprint <span class="pill pill-term">agents / CLI</span></h3>
+      <p>Once a feature’s blueprint is solid, extract implementable work orders from it. The extract
+        agent reads the blueprint and proposes candidate work orders that <em>implement</em> it:</p>
+      <pre><code>kiln extract &lt;blueprintId&gt; --accept-all
+# or review candidates first, then: kiln accept &lt;id&gt;</code></pre>
+      <p>Each work order is born linked to its blueprint, so it inherits the full lineage. Move one
+        to <strong>ready</strong> when it’s complete (the <code>draft → ready</code> gate checks for
+        the required sections).</p>
+    </li>
+    <li>
+      <h3>Hand it off <span class="pill pill-term">MCP</span></h3>
+      <p>Point a coding agent at the project over MCP and let it work the board — see
+        <a href="#handoff">Handing work to a coding agent</a> below.</p>
+    </li>
+  </ol>
+
+  <h2 id="brownfield">Path B — Brownfield (existing repo)</h2>
+  <p>
+    You already have a codebase and want Kiln to become its living source of truth. Instead of
+    authoring the graph by hand, you run a <strong>survey</strong>: an agent with filesystem access
+    reads the repo and <em>proposes</em> the product overview and feature tree. Kiln never reads your
+    repository — the agent does, and every proposal lands as a gated suggestion you accept in the app.
+  </p>
+
+  <ol class="step-list">
+    <li>
+      <h3>Create a fresh, empty project <span class="pill pill-app">app</span></h3>
+      <p>Same as greenfield step 1 — <strong>New project…</strong> in the app, or
+        <code>kiln projects create &lt;name&gt;</code>. Leave it untouched: the survey only proposes
+        into a <em>fresh</em> project (just the seeded root pair, nothing else). Don’t author anything
+        in it first.</p>
+    </li>
+    <li>
+      <h3>Start the MCP server, bound to that project <span class="pill pill-term">terminal</span></h3>
+      <pre><code>KILN_MCP_TOKEN=choose-a-secret \
+KILN_MCP_PORT=3777 \
+KILN_PROJECT="&lt;your fresh project name&gt;" \
+pnpm -C packages/mcp-server start</code></pre>
+      <p>The startup log prints the exact database file it’s serving — confirm it’s the fresh project
+        before going further. A survey lands dozens of entities; pointed at the wrong project it
+        pollutes a real one.</p>
+    </li>
+    <li>
+      <h3>Connect your coding agent and run the survey skill <span class="pill pill-term">MCP</span></h3>
+      <p>Register the server with your MCP client (for Claude Code, see
+        <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md</a>),
+        install the <code>kiln-survey</code> skill, and ask the agent to “survey this repo into Kiln.”
+        Under the hood it:</p>
+      <ul>
+        <li>calls <code>get_project_shape</code> to confirm the target is <strong>fresh</strong>;</li>
+        <li>proposes the product overview + architecture with <code>propose_root_overview</code>;</li>
+        <li>proposes each capability it finds with <code>propose_feature</code> — each carrying
+          <strong>evidence</strong> (real file paths and excerpts it can cite).</li>
+      </ul>
+      <p>These three are the <em>only</em> document writes that exist over MCP, and both propose calls
+        are gated: they create empty-bodied documents plus a <strong>pending suggestion</strong> per
+        document. Nothing is committed by the agent.</p>
+    </li>
+    <li>
+      <h3>Review and accept in the app <span class="pill pill-app">app</span></h3>
+      <p>Open the project in the desktop app. Every proposed overview, feature, and blueprint is
+        waiting in the suggestion / proposal queue. Read them against the evidence, then accept or
+        reject each one. What you accept becomes the real graph; the rest is discarded. This gate is
+        the whole point — the survey drafts, you decide.</p>
+    </li>
+    <li>
+      <h3>Cut work orders and hand off <span class="pill pill-term">agents / MCP</span></h3>
+      <p>From here it’s identical to greenfield: extract work orders from the accepted blueprints and
+        hand them to a coding agent. Your existing code now has a traceable graph above it.</p>
+    </li>
+  </ol>
+
+  <h2 id="handoff">Handing work to a coding agent</h2>
+  <p>
+    Once a project has ready work orders, any MCP client (Claude Code, Cursor, …) can work the board
+    through three tools: <code>list_ready_work_orders</code> → <code>get_work_order</code> →
+    <code>update_work_order_status</code>. The agent installs the <code>kiln-execute</code> skill,
+    picks a ready work order, receives the full lineage in one payload (and Kiln records a context
+    receipt on delivery), implements it, and reports status back. Execution agents never author or
+    edit Kiln documents — that only happens through suggestions a human resolves.
+  </p>
+  <p>
+    The full connection walkthrough — building, seeding, registering the server, and the loop — is in
+    <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md</a>.
+  </p>
+
+  <h2 id="surfaces">Which surface does what</h2>
+  <p>Kiln has three doors into the same per-project store. Knowing which does what saves confusion:</p>
+  <ul>
+    <li><strong>Desktop app <span class="pill pill-app">app</span></strong> — the human surface.
+      Create projects, author documents, review and accept suggestions, and see the graph
+      (Pulse dashboard, Board, X-ray map, Context Inspector). This is what you download.</li>
+    <li><strong>CLI <span class="pill pill-term">terminal</span></strong> — scriptable authoring:
+      <code>create</code>, <code>link</code>, <code>draft</code>, <code>extract</code>,
+      <code>review</code>, <code>status</code>, <code>export</code>, <code>projects</code>. Same store
+      as the app.</li>
+    <li><strong>MCP server <span class="pill pill-term">MCP</span></strong> — the agent surface.
+      The execution loop plus the gated survey tools. Bound to one project at startup.</li>
+  </ul>
+  <div class="callout">
+    <strong>Everything stays local and portable.</strong> Each project is one SQLite file on your
+    machine — your specs, your key, your data. <code>kiln export &lt;dir&gt;</code> writes the whole
+    graph out as markdown whenever you want it in plain files.
+  </div>
+
+</main>
+</div>
+
+<footer>
+  <div class="wrap" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; width:100%; padding:0;">
+    <span>© 2026 Kiln · Open source</span>
+    <span>
+      <a href="./index.html">Home</a> ·
+      <a href="https://github.com/danielyayla/kiln">GitHub</a> ·
+      <a href="https://github.com/danielyayla/kiln/tree/main/docs">Full docs</a>
+    </span>
+  </div>
+</footer>
+
+</body>
+</html>
