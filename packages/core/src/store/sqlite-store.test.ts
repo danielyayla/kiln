@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { effectiveWorkType } from "../domain";
+import { effectiveCriticality, effectiveWorkType } from "../domain";
 import { ConstraintError } from "../errors";
 import { SqliteStore } from "./sqlite-store";
 
@@ -57,6 +57,35 @@ describe("SqliteStore — entities", () => {
     const untyped = store.createEntity({ type: "work_order", title: "W2" });
     expect(effectiveWorkType(typed)).toBe("refactor");
     expect(effectiveWorkType(untyped)).toBe("feature");
+  });
+
+  it("persists criticality on work orders and refuses it elsewhere", () => {
+    const wo = store.createEntity({ type: "work_order", title: "WO", criticality: "critical" });
+    expect(wo.criticality).toBe("critical");
+    expect(store.getEntity(wo.id)?.criticality).toBe("critical");
+
+    expect(() =>
+      store.createEntity({ type: "requirement", title: "R", criticality: "critical" }),
+    ).toThrow(ConstraintError);
+    expect(() =>
+      store.createEntity({ type: "work_order", title: "W", criticality: "nope" as any }),
+    ).toThrow();
+
+    // Patch semantics mirror workType: undefined keeps, null clears.
+    expect(store.updateEntity(wo.id, { criticality: "important" }).criticality).toBe("important");
+    expect(store.updateEntity(wo.id, { title: "Renamed" }).criticality).toBe("important");
+    expect(store.updateEntity(wo.id, { criticality: null }).criticality).toBeNull();
+
+    const req = store.createEntity({ type: "requirement", title: "R2" });
+    expect(req.criticality).toBeNull();
+    expect(() => store.updateEntity(req.id, { criticality: "routine" })).toThrow(ConstraintError);
+  });
+
+  it("resolves the effective criticality with routine as the default", () => {
+    const set = store.createEntity({ type: "work_order", title: "W", criticality: "important" });
+    const unset = store.createEntity({ type: "work_order", title: "W2" });
+    expect(effectiveCriticality(set)).toBe("important");
+    expect(effectiveCriticality(unset)).toBe("routine");
   });
 
   it("deletes an entity and cascades its links, suggestions, and revisions", () => {

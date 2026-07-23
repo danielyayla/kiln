@@ -57,3 +57,33 @@ describe("connect — work_type migration", () => {
     third.close();
   });
 });
+
+describe("connect — criticality migration", () => {
+  it("adds the column to a pre-migration store, leaving existing rows NULL (unset)", () => {
+    const path = join(scratch, "kiln.db");
+
+    // Build a pre-migration store: create it, seed a row, then drop the
+    // criticality column so the file looks like one written before the
+    // verification & criticality feature.
+    const old = connect(path);
+    old
+      .prepare(
+        `INSERT INTO entities (id, type, title, body, status, work_type, assignee, created_at, updated_at)
+         VALUES ('wo-1', 'work_order', 'Pre-existing', '', 'done', NULL, NULL,
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+      )
+      .run();
+    old.exec("ALTER TABLE entities DROP COLUMN criticality");
+    old.close();
+
+    // Re-opening migrates: column added, no backfill — existing rows stay
+    // NULL, and effectiveCriticality resolves that to routine at read time.
+    const db = connect(path);
+    const row = db
+      .prepare("SELECT title, criticality FROM entities WHERE id = 'wo-1'")
+      .get() as unknown as { title: string; criticality: string | null };
+    expect(row.title).toBe("Pre-existing");
+    expect(row.criticality).toBeNull();
+    db.close();
+  });
+});

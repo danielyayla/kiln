@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ENTITY_TYPES, MODEL_USAGE_FEATURES, WORK_ORDER_STATUSES, WORK_TYPES } from "./types";
+import { CRITICALITIES, ENTITY_TYPES, MODEL_USAGE_FEATURES, WORK_ORDER_STATUSES, WORK_TYPES } from "./types";
 
 export const NewEntity = z.object({
   type: z.enum(ENTITY_TYPES),
@@ -7,6 +7,7 @@ export const NewEntity = z.object({
   body: z.string().default(""),
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
   workType: z.enum(WORK_TYPES).nullable().optional(),
+  criticality: z.enum(CRITICALITIES).nullable().optional(),
   assignee: z.string().nullable().optional(),
 });
 export type NewEntity = z.input<typeof NewEntity>;
@@ -24,6 +25,7 @@ export const EntityPatch = z.object({
   body: z.string().optional(),
   status: z.enum(WORK_ORDER_STATUSES).nullable().optional(),
   workType: z.enum(WORK_TYPES).nullable().optional(),
+  criticality: z.enum(CRITICALITIES).nullable().optional(),
   assignee: z.string().nullable().optional(),
 });
 export type EntityPatch = z.infer<typeof EntityPatch>;
@@ -56,3 +58,36 @@ export const CompletionReceipt = CompletionReport.extend({
   createdAt: z.string().min(1),
 });
 export type CompletionReceipt = z.infer<typeof CompletionReceipt>;
+
+// A verdict on one acceptance criterion: the criterion text as judged, whether
+// the completion receipt(s) show it met, and why. `undecidable` means the
+// receipt gives no basis to judge either way — distinct from unmet.
+export const VERDICT_STATUSES = ["met", "unmet", "undecidable"] as const;
+export type VerdictStatus = (typeof VERDICT_STATUSES)[number];
+
+export const CriterionVerdict = z.object({
+  criterion: nonBlank("criterion"),
+  status: z.enum(VERDICT_STATUSES),
+  reason: nonBlank("reason"),
+});
+export type CriterionVerdict = z.infer<typeof CriterionVerdict>;
+
+// The verify agent's structured output — shared by the agent and the app so
+// both sides validate the same shape. `criteria` may be empty (a work order
+// with no acceptance list still gets an overall verdict, typically
+// undecidable); `overall` is the single judgment across all criteria.
+export const VerificationVerdict = z.object({
+  criteria: z.array(CriterionVerdict),
+  overall: z.enum(VERDICT_STATUSES),
+});
+export type VerificationVerdict = z.infer<typeof VerificationVerdict>;
+
+// The persisted record: a verdict tied to its work order. Like completion
+// receipts, verification receipts are append-only and immutable — core
+// exposes no update or delete surface; re-verification appends.
+export const VerificationReceipt = VerificationVerdict.extend({
+  id: z.string().min(1),
+  workOrderId: z.string().min(1),
+  createdAt: z.string().min(1),
+});
+export type VerificationReceipt = z.infer<typeof VerificationReceipt>;

@@ -85,6 +85,19 @@ CREATE TABLE IF NOT EXISTS completion_receipts (
 );
 CREATE INDEX IF NOT EXISTS idx_completion_receipts_wo ON completion_receipts(work_order_id);
 
+-- Verification receipts: an independent judgment of a done work order's
+-- completion receipt(s) against its acceptance criteria — per-criterion
+-- verdicts plus an overall one. Append-only and immutable like completion
+-- receipts; re-verification appends a new row.
+CREATE TABLE IF NOT EXISTS verification_receipts (
+  id            TEXT PRIMARY KEY,
+  work_order_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+  criteria_json TEXT NOT NULL,
+  overall       TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_verification_receipts_wo ON verification_receipts(work_order_id);
+
 -- AI settings & usage: host-level configuration (opaque string values; the
 -- consumer parses booleans etc.) and the one-row-per-model-call ledger.
 CREATE TABLE IF NOT EXISTS settings (
@@ -135,5 +148,10 @@ function migrate(db: DB): void {
       "UPDATE entities SET work_type = ? WHERE type = 'work_order' AND work_type IS NULL AND title LIKE ?",
     );
     for (const t of ["bug", "refactor", "perf", "chore"]) backfill.run(t, `[${t}]%`);
+  }
+  if (!entityColumns.some((c) => c.name === "criticality")) {
+    // No backfill: there is no legacy convention to translate. NULL means
+    // "unset" and effectiveCriticality resolves it to routine at read time.
+    db.exec("ALTER TABLE entities ADD COLUMN criticality TEXT");
   }
 }

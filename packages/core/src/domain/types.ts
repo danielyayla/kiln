@@ -17,6 +17,16 @@ export type WorkType = (typeof WORK_TYPES)[number];
 
 export const effectiveWorkType = (e: Pick<Entity, "workType">): WorkType => e.workType ?? "feature";
 
+// Criticality states how much a work order matters (verification & criticality
+// feature); the set is closed. Like workType, `routine` is never stored
+// implicitly — absence means "unset", and effectiveCriticality is the one
+// place the default lives.
+export const CRITICALITIES = ["routine", "important", "critical"] as const;
+export type Criticality = (typeof CRITICALITIES)[number];
+
+export const effectiveCriticality = (e: Pick<Entity, "criticality">): Criticality =>
+  e.criticality ?? "routine";
+
 export interface Entity {
   id: Id;
   type: EntityType;
@@ -24,6 +34,7 @@ export interface Entity {
   body: string;
   status: WorkOrderStatus | null;
   workType: WorkType | null;
+  criticality: Criticality | null;
   assignee: string | null;
   createdAt: string;
   updatedAt: string;

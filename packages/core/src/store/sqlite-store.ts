@@ -6,7 +6,9 @@ import {
   NewEntity,
   NewModelUsage,
   Suggestion,
+  VerificationReceipt,
   type ContextReceipt,
+  type Criticality,
   type Entity,
   type EntityType,
   type Id,
@@ -27,6 +29,7 @@ interface EntityRow {
   body: string;
   status: string | null;
   work_type: string | null;
+  criticality: string | null;
   assignee: string | null;
   created_at: string;
   updated_at: string;
@@ -40,6 +43,7 @@ function toEntity(r: EntityRow): Entity {
     body: r.body,
     status: (r.status as WorkOrderStatus | null) ?? null,
     workType: (r.work_type as WorkType | null) ?? null,
+    criticality: (r.criticality as Criticality | null) ?? null,
     assignee: r.assignee ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -89,6 +93,24 @@ function toCompletionReceipt(r: CompletionReceiptRow): CompletionReceipt {
   return receipt;
 }
 
+interface VerificationReceiptRow {
+  id: string;
+  work_order_id: string;
+  criteria_json: string;
+  overall: string;
+  created_at: string;
+}
+
+function toVerificationReceipt(r: VerificationReceiptRow): VerificationReceipt {
+  return {
+    id: r.id,
+    workOrderId: r.work_order_id,
+    criteria: JSON.parse(r.criteria_json),
+    overall: r.overall as VerificationReceipt["overall"],
+    createdAt: r.created_at,
+  };
+}
+
 interface ModelUsageRow {
   id: string;
   feature: string;
@@ -125,12 +147,17 @@ export class SqliteStore implements Store {
     if (data.workType != null && data.type !== "work_order") {
       throw new ConstraintError(`workType applies only to work orders; entity type is ${data.type}`);
     }
+    if (data.criticality != null && data.type !== "work_order") {
+      throw new ConstraintError(
+        `criticality applies only to work orders; entity type is ${data.type}`,
+      );
+    }
     const now = new Date().toISOString();
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO entities (id, type, title, body, status, work_type, assignee, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO entities (id, type, title, body, status, work_type, criticality, assignee, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -139,6 +166,7 @@ export class SqliteStore implements Store {
         data.body,
         data.status ?? null,
         data.workType ?? null,
+        data.criticality ?? null,
         data.assignee ?? null,
         now,
         now,
@@ -188,15 +216,21 @@ export class SqliteStore implements Store {
     if (data.workType != null && existing.type !== "work_order") {
       throw new ConstraintError(`workType applies only to work orders; entity ${id} is a ${existing.type}`);
     }
+    if (data.criticality != null && existing.type !== "work_order") {
+      throw new ConstraintError(
+        `criticality applies only to work orders; entity ${id} is a ${existing.type}`,
+      );
+    }
     this.db
       .prepare(
-        `UPDATE entities SET title=?, body=?, status=?, work_type=?, assignee=?, updated_at=? WHERE id=?`,
+        `UPDATE entities SET title=?, body=?, status=?, work_type=?, criticality=?, assignee=?, updated_at=? WHERE id=?`,
       )
       .run(
         data.title ?? existing.title,
         data.body ?? existing.body,
         data.status !== undefined ? data.status : existing.status,
         data.workType !== undefined ? data.workType : existing.workType,
+        data.criticality !== undefined ? data.criticality : existing.criticality,
         data.assignee !== undefined ? data.assignee : existing.assignee,
         new Date().toISOString(),
         id,
@@ -387,6 +421,27 @@ export class SqliteStore implements Store {
       .prepare(`SELECT * FROM completion_receipts WHERE work_order_id=? ORDER BY rowid`)
       .all(workOrderId) as unknown as CompletionReceiptRow[];
     return rows.map(toCompletionReceipt);
+  }
+
+  saveVerificationReceipt(receipt: VerificationReceipt): void {
+    const data = VerificationReceipt.parse(receipt);
+    if (!this.getEntity(data.workOrderId)) throw new NotFoundError(data.workOrderId);
+    this.db
+      .prepare(
+        `INSERT INTO verification_receipts (id, work_order_id, criteria_json, overall, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(data.id, data.workOrderId, JSON.stringify(data.criteria), data.overall, data.createdAt);
+  }
+
+  // Same contract as completion receipts: rowid is the true insertion order,
+  // append-only, never deduped, no latest* — every verification pass is its
+  // own record and earlier verdicts stay readable.
+  listVerificationReceipts(workOrderId: Id): VerificationReceipt[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM verification_receipts WHERE work_order_id=? ORDER BY rowid`)
+      .all(workOrderId) as unknown as VerificationReceiptRow[];
+    return rows.map(toVerificationReceipt);
   }
 
   getSetting(key: string): string | null {

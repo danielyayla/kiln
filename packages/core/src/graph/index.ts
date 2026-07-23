@@ -15,4 +15,5 @@ export * from "./shape";
 export * from "./skills";
 export * from "./snapshot";
 export * from "./tree";
+export * from "./verification";
 export * from "./work-type";

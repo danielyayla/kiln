@@ -12,6 +12,7 @@ import type {
   NewModelUsage,
   Revision,
   Suggestion,
+  VerificationReceipt,
   WorkOrderStatus,
 } from "../domain";
 
@@ -60,6 +61,13 @@ export interface Store {
   // chronological (oldest first).
   saveCompletionReceipt(receipt: CompletionReceipt): void;
   listCompletionReceipts(workOrderId: Id): CompletionReceipt[];
+
+  // Verification receipts — an independent per-criterion judgment of a done
+  // work order against its acceptance criteria. Same contract as completion
+  // receipts: append-only (no update, no delete), never deduped, `list` is
+  // chronological (oldest first).
+  saveVerificationReceipt(receipt: VerificationReceipt): void;
+  listVerificationReceipts(workOrderId: Id): VerificationReceipt[];
 
   // AI settings & usage: host-level configuration as opaque string values —
   // booleans are stored "true"/"false" and parsed at the consumer boundary.
