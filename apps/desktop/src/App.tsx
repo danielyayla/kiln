@@ -15,6 +15,7 @@ import { TopBar } from "./components/TopBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { Button, Input, ToastProvider, useToast } from "./components/ui";
 import { navigate, routeAfterProjectSwitch, useRoute } from "./lib/route";
+import { resolveKey } from "./lib/keyboard";
 import { color, font, space } from "./theme";
 
 // First-run welcome (BP-6): a fresh store gets a create CTA instead of an
@@ -85,16 +86,34 @@ export function App() {
   const tree = useQuery({ queryKey: ["tree", "chain"], queryFn: () => api.tree("chain") });
   const isFreshStore = tree.data?.length === 0;
 
-  // ⌘K / Ctrl+K from anywhere (BP-6).
+  // Global keyboard (BP-6 ⌘K + WO#5 keyboard nav). One listener drives the
+  // palette toggle and the "g <key>" view-switch chord; `resolveKey` is the pure
+  // map (unit-tested), and view switches go through `navigate` so a shortcut and
+  // a TopBar click share one path. A dangling "g" expires after a short window.
   useEffect(() => {
+    let armed = false;
+    let disarm: ReturnType<typeof setTimeout> | undefined;
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const el = e.target as HTMLElement | null;
+      const editable =
+        !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const { action, armed: next } = resolveKey(e, armed, editable);
+      armed = next;
+      clearTimeout(disarm);
+      if (armed) disarm = setTimeout(() => (armed = false), 1500);
+      if (action.kind === "quickOpen") {
         e.preventDefault();
         setQuickOpen((v) => !v);
+      } else if (action.kind === "navigate") {
+        e.preventDefault();
+        navigate({ view: action.view });
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearTimeout(disarm);
+    };
   }, []);
 
   return (

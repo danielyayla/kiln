@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Background,
@@ -386,6 +386,20 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
     setTraced(id);
     setPeek(id);
   };
+
+  // Esc dismisses the peek (WO#5 keyboard nav) — the one transient surface the
+  // canvas owns. Scoped to when a peek is open so Esc is inert otherwise.
+  useEffect(() => {
+    if (!traced) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setTraced(null);
+        setPeek(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [traced]);
   const lineage = useMemo(
     () => (traced && graph.data ? traceLineage(graph.data, traced) : null),
     [traced, graph.data],
@@ -824,6 +838,7 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
             )}
             <button
               aria-label="Close document panel"
+              title="Close (Esc)"
               onClick={() => focusNode(null)}
               style={{
                 marginLeft: "auto",

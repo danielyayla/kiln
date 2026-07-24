@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Entity, EntityType } from "@kiln/core";
 import { api } from "../lib/client";
+import { VIEW_SHORTCUTS } from "../lib/keyboard";
 import { Badge } from "./ui";
 import { backdrop, color, font, radius, shadow, space } from "../theme";
 
@@ -163,7 +164,52 @@ export function QuickOpen({ onSelect, onClose }: { onSelect: (id: string) => voi
             </li>
           ))}
         </ul>
+        {/* Discoverability hint (WO#5): the palette is where keyboard users
+            already are, so the global chords are documented right here. */}
+        <div
+          data-testid="shortcut-hint"
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: `${space(1)}px ${space(3)}px`,
+            padding: `${space(2)}px ${space(3)}px`,
+            borderTop: `1px solid ${color.border}`,
+            fontSize: font.xs,
+            color: color.muted,
+          }}
+        >
+          {VIEW_SHORTCUTS.map((s) => (
+            <span key={s.keys} style={{ display: "inline-flex", alignItems: "center", gap: space(1) }}>
+              <Kbd>{s.keys}</Kbd>
+              {s.label}
+            </span>
+          ))}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: space(1) }}>
+            <Kbd>Esc</Kbd>
+            Close
+          </span>
+        </div>
       </div>
     </div>
+  );
+}
+
+// A keycap for the shortcut hint — matches the TopBar's ⌘K chip styling.
+function Kbd({ children }: { children: ReactNode }) {
+  return (
+    <kbd
+      style={{
+        fontFamily: "inherit",
+        fontSize: font.xs,
+        padding: `0 ${space(1)}px`,
+        border: `1px solid ${color.border}`,
+        borderRadius: radius.sm,
+        background: color.chip,
+        color: color.text,
+      }}
+    >
+      {children}
+    </kbd>
   );
 }
