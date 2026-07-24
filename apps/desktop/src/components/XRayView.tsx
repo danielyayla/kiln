@@ -16,6 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { EntityType, LinkType, WorkOrderStatus } from "@kiln/core";
 import { api } from "../lib/client";
+import { contextRoute, navigate } from "../lib/route";
 import { boundingRect, COLUMN_WIDTH, layoutXRay } from "../lib/layout";
 import { traceLineage } from "../lib/lineage";
 import { summarizeXRayContext, type XRayContextSummary } from "../lib/xray-context";
@@ -585,7 +586,7 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
   // so lane bands and column headers are inherently excluded. fitBounds (a
   // plain viewport op) is used instead of fitView({nodes}) — the latter waits
   // on node-initialization state and proved unreliable here.
-  const frameContext = () => {
+  const fitThread = () => {
     if (!rf || !lineage) return;
     const rect = boundingRect(
       nodes
@@ -883,8 +884,22 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
               Open in Documents
             </Button>
             {tracedNode.type === "work_order" && (
-              <Button variant="ghost" disabled={!rf || !lineage} onClick={frameContext}>
+              <Button
+                variant="ghost"
+                title="Open in Documents with the agent's assembled context already in view"
+                onClick={() => navigate(contextRoute(tracedNode.id))}
+              >
                 Frame context
+              </Button>
+            )}
+            {tracedNode.type === "work_order" && (
+              <Button
+                variant="ghost"
+                title="Fit the canvas to this work order's lineage thread"
+                disabled={!rf || !lineage}
+                onClick={fitThread}
+              >
+                Fit thread
               </Button>
             )}
           </div>

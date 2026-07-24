@@ -146,6 +146,15 @@ export function entityLink(id: string): string {
   return linkForRoute({ view: "documents", selectedId: id, panelTab: null, params: {} }, locationBase());
 }
 
+// One-hop cross-view jump (WO#4). The route patch for landing on an entity's
+// Context tab in Documents in a single move — used by surfaces whose whole
+// point IS the assembled context (X-ray peek, Pulse's pre-flight panel), so
+// they skip the old open-then-switch-tab two-step. Pure so the target is
+// unit-tested; call sites pass it straight to `navigate`.
+export function contextRoute(id: string): Partial<Route> {
+  return { view: "documents", selectedId: id, panelTab: "context" };
+}
+
 // After a project switch, decide where to land: keep the current location when
 // its opened entity still exists in the new store, otherwise fall back cleanly
 // to Pulse (a project is a separate store — the old id usually won't resolve).

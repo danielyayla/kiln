@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  contextRoute,
   linkForRoute,
   mergeRoute,
   parseHash,
@@ -109,6 +110,27 @@ describe("linkForRoute", () => {
     const route: Route = { view: "board", selectedId: "d9", panelTab: null, params: {} };
     const link = linkForRoute(route, base);
     expect(parseHash(link.slice(base.length))).toEqual(route);
+  });
+});
+
+describe("contextRoute", () => {
+  it("targets the entity's Documents Context tab in one hop", () => {
+    expect(contextRoute("d1")).toEqual({ view: "documents", selectedId: "d1", panelTab: "context" });
+  });
+
+  it("merges over any current location to land on the Context tab", () => {
+    // From the X-ray canvas, one hop lands on Documents with panel=context —
+    // no open-then-switch-tab two-step.
+    const fromXray: Route = { view: "xray", selectedId: null, panelTab: null, params: { feature: "f1" } };
+    expect(mergeRoute(fromXray, contextRoute("d1"))).toMatchObject({
+      view: "documents",
+      selectedId: "d1",
+      panelTab: "context",
+    });
+  });
+
+  it("serializes to a deep link that carries the panel", () => {
+    expect(serializeRoute(mergeRoute(base, contextRoute("d1")))).toBe("#/documents?doc=d1&panel=context");
   });
 });
 
