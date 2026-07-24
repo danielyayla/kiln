@@ -1,8 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AuthoringSkillDoc, UsageBucket, UsageReport } from "@kiln/core";
-import { api } from "../lib/client";
+import { api, type AgentAccessStatus } from "../lib/client";
 import { friendlyError } from "../lib/errors";
+import {
+  claudeMcpAddCommand,
+  jsonConfigSnippet,
+  rePinPrompt,
+  showConnection,
+  statusLine,
+} from "../lib/agent-access";
 import { declaredTemplateTypes, type TemplateType } from "../lib/skill-templates";
 import { Button, Input, RowMenu, SectionHeader, useToast } from "./ui";
 
@@ -418,6 +425,320 @@ function AuthoringSkillsCard() {
   );
 }
 
+// The AI toggle's switch markup, factored out for the agent-access toggle.
+// The checkbox stays the real control (testid + role="switch"); the track/thumb
+// span is purely its visual.
+function Switch({
+  checked,
+  disabled,
+  onChange,
+  testid,
+  ariaLabel,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+  testid?: string;
+  ariaLabel: string;
+}) {
+  return (
+    <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <input
+        data-testid={testid}
+        type="checkbox"
+        role="switch"
+        aria-checked={checked}
+        aria-label={ariaLabel}
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ position: "absolute", inset: 0, opacity: 0, margin: 0, cursor: "pointer" }}
+      />
+      <span
+        aria-hidden
+        style={{
+          width: 34,
+          height: 20,
+          borderRadius: 10,
+          background: checked ? color.accent : color.border,
+          transition: "background 120ms",
+          display: "inline-block",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: 16,
+            height: 16,
+            borderRadius: 8,
+            background: color.bg,
+            margin: 2,
+            transform: checked ? "translateX(14px)" : "none",
+            transition: "transform 120ms",
+          }}
+        />
+      </span>
+    </span>
+  );
+}
+
+// Copy-to-clipboard with the app's flash convention (ContextInspector's Copy
+// context): swap the label to "Copied ✓" for 1.5s. Quiet on failure — a denied
+// clipboard permission simply doesn't flash.
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      onClick={() =>
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => {})
+      }
+    >
+      {copied ? "Copied ✓" : label}
+    </Button>
+  );
+}
+
+// One labelled, horizontally-scrollable code block with its own copy button.
+function Snippet({ label, text }: { label: string; text: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: space(1) }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: font.xs, color: color.muted }}>{label}</span>
+        <CopyButton text={text} label="Copy" />
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          overflowX: "auto",
+          background: color.bg,
+          border: `1px solid ${color.border}`,
+          borderRadius: radius.md,
+          padding: space(3),
+          fontFamily: "ui-monospace, monospace",
+          fontSize: font.xs,
+          lineHeight: 1.5,
+          color: color.text,
+          whiteSpace: "pre",
+        }}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+}
+
+const STATUS_TONE: Record<"running" | "stopped" | "error", string> = {
+  running: color.ok,
+  stopped: color.faint,
+  error: color.danger,
+};
+
+// Agent access (bundled MCP server feature): the whole section is a pure
+// function of GET /agent-access — no webview-side inference about listener
+// state. Toggling, port edits, regenerate, and re-pin each round-trip through
+// the API and re-render from the returned status.
+function AgentAccessCard() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [portDraft, setPortDraft] = useState<string | null>(null);
+  const [confirmingRegen, setConfirmingRegen] = useState(false);
+
+  const status = useQuery({ queryKey: ["agent-access"], queryFn: api.agentAccess });
+  // The active-project context the switcher already loads — used only to detect
+  // active ≠ pinned; never to re-pin automatically.
+  const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects });
+
+  // Every route returns the fresh status; trust it directly (like the skills PUT).
+  const onStatus = (s: AgentAccessStatus) => queryClient.setQueryData(["agent-access"], s);
+
+  const put = useMutation({ mutationFn: api.putAgentAccess, onSuccess: onStatus, onError: (e) => toast(friendlyError(e)) });
+  const regen = useMutation({
+    mutationFn: api.regenerateAgentToken,
+    onSuccess: (s) => {
+      onStatus(s);
+      toast("Token regenerated — reconnect your agent with the new snippet");
+    },
+    onError: (e) => toast(friendlyError(e)),
+  });
+  const pin = useMutation({
+    mutationFn: api.pinAgentProject,
+    onSuccess: (s) => {
+      onStatus(s);
+      toast(`Agent access now serves “${s.project?.name ?? "…"}”`);
+    },
+    onError: (e) => toast(friendlyError(e)),
+  });
+
+  if (status.isPending) {
+    return (
+      <Card title="Agent access">
+        <p style={{ margin: 0, fontSize: font.sm, color: color.muted }}>Loading…</p>
+      </Card>
+    );
+  }
+  if (status.isError || !status.data) {
+    // The routes 404 when the sidecar build lacks the manager; say so plainly
+    // rather than rendering a dead toggle.
+    return (
+      <Card title="Agent access">
+        <p style={{ margin: 0, fontSize: font.sm, color: color.muted }}>
+          Agent access unavailable — {friendlyError(status.error ?? new TypeError("unreachable"))}
+        </p>
+      </Card>
+    );
+  }
+  const s = status.data;
+  const line = statusLine(s);
+  const repin = rePinPrompt(s, projects.data);
+  const busy = put.isPending || regen.isPending || pin.isPending;
+
+  const submitPort = () => {
+    if (portDraft === null) return;
+    const port = Number(portDraft);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      toast("Port must be a whole number between 1 and 65535");
+      return;
+    }
+    if (port === s.port) {
+      setPortDraft(null);
+      return;
+    }
+    put.mutate({ port }, { onSuccess: () => setPortDraft(null) });
+  };
+
+  return (
+    <Card title="Agent access">
+      <p style={{ margin: 0, fontSize: font.sm, color: color.muted }}>
+        Run a local MCP endpoint inside the app so coding agents can pull ready work orders and survey
+        repositories — no terminal, no server to launch. Enabling this exposes the pinned project’s documents
+        and work orders to any local process holding the token.
+      </p>
+
+      <FieldRow label="Agent access">
+        <div style={{ display: "flex", flexDirection: "column", gap: space(1) }}>
+          <label style={{ display: "flex", alignItems: "center", gap: space(2), fontSize: font.sm, cursor: "pointer" }}>
+            <Switch
+              testid="agent-access-toggle"
+              ariaLabel="Agent access"
+              checked={s.enabled}
+              disabled={busy}
+              onChange={(next) => put.mutate({ enabled: next })}
+            />
+            {s.enabled ? "Enabled" : "Disabled"}
+          </label>
+        </div>
+      </FieldRow>
+
+      <FieldRow label="Port">
+        <div style={{ display: "flex", flexDirection: "column", gap: space(1), flex: 1, minWidth: 0 }}>
+          <form
+            style={{ display: "flex", gap: space(2), alignItems: "center" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitPort();
+            }}
+          >
+            <Input
+              aria-label="Agent access port"
+              inputMode="numeric"
+              value={portDraft ?? String(s.port)}
+              disabled={busy}
+              onChange={(e) => setPortDraft(e.target.value)}
+              style={{ width: 100 }}
+            />
+            {portDraft !== null && portDraft !== String(s.port) && (
+              <Button variant="ghost" type="submit" disabled={busy}>
+                Apply
+              </Button>
+            )}
+          </form>
+          {/* The single status line (running/stopped/error) sits beside the
+              port field so a bind conflict — or a removed-pin reason — reads
+              exactly where the user would act on it. */}
+          <div
+            data-testid="agent-access-status"
+            style={{ display: "flex", alignItems: "center", gap: space(2), fontSize: font.sm, color: STATUS_TONE[line.tone] }}
+          >
+            <span
+              aria-hidden
+              style={{ width: 8, height: 8, borderRadius: 999, background: STATUS_TONE[line.tone], flexShrink: 0 }}
+            />
+            {line.text}
+          </div>
+        </div>
+      </FieldRow>
+
+      <FieldRow label="Project">
+        <div style={{ display: "flex", flexDirection: "column", gap: space(1), flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: font.sm, color: s.project ? color.text : color.muted }}>
+            {s.project ? s.project.name : "No project pinned"}
+          </span>
+          {repin && (
+            <div
+              data-testid="agent-access-repin"
+              style={{ display: "flex", alignItems: "center", gap: space(2), flexWrap: "wrap" }}
+            >
+              <span style={{ fontSize: font.xs, color: color.muted }}>
+                {repin.pinnedName
+                  ? `The app is on “${repin.activeName}” but agents are served “${repin.pinnedName}”.`
+                  : `The app is on “${repin.activeName}”.`}
+              </span>
+              <Button variant="ghost" disabled={busy} onClick={() => pin.mutate(repin.activeId)}>
+                Serve “{repin.activeName}”
+              </Button>
+            </div>
+          )}
+        </div>
+      </FieldRow>
+
+      {showConnection(s) && (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: space(3) }}>
+            <Snippet label="Register with Claude Code" text={claudeMcpAddCommand(s)} />
+            <Snippet label="Or add to an MCP config file" text={jsonConfigSnippet(s)} />
+          </div>
+
+          <FieldRow label="Token">
+            {confirmingRegen ? (
+              <div style={{ display: "flex", alignItems: "center", gap: space(2), flexWrap: "wrap" }}>
+                <span style={{ fontSize: font.xs, color: color.warn }}>
+                  Regenerating severs any connected agent until it reconnects. Continue?
+                </span>
+                <Button
+                  variant="primary"
+                  disabled={busy}
+                  onClick={() => regen.mutate(undefined, { onSettled: () => setConfirmingRegen(false) })}
+                >
+                  Regenerate
+                </Button>
+                <Button variant="ghost" disabled={busy} onClick={() => setConfirmingRegen(false)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button variant="ghost" disabled={busy} onClick={() => setConfirmingRegen(true)}>
+                Regenerate token
+              </Button>
+            )}
+          </FieldRow>
+        </>
+      )}
+
+      <p style={{ margin: 0, fontSize: font.xs, color: color.muted }}>
+        The endpoint binds <code>127.0.0.1</code> only — never the network. The token is a local credential;
+        anyone who can run a process on this machine and holds it can read and update the pinned project.
+      </p>
+    </Card>
+  );
+}
+
 const PERIODS = [
   { key: "day", label: "Day" },
   { key: "week", label: "Week" },
@@ -508,6 +829,7 @@ function UsageCard({ report }: { report: UsageReport }) {
 // must not dominate the page on open.
 const SECTIONS = [
   { key: "ai", label: "AI configuration" },
+  { key: "agent", label: "Agent access" },
   { key: "skills", label: "Authoring skills" },
   { key: "usage", label: "Usage" },
 ] as const;
@@ -685,6 +1007,8 @@ export function SettingsView() {
         </p>
       </Card>
       )}
+
+      {section === "agent" && <AgentAccessCard />}
 
       {section === "skills" && <AuthoringSkillsCard />}
 

@@ -68,6 +68,21 @@ export type ProjectList = {
   activeProject: string | null;
 };
 
+// Agent access (bundled MCP server feature): the single status object the
+// Settings UI renders — no webview-side inference about listener state. The
+// token is returned in full by design (a locally-minted localhost credential
+// whose whole purpose is being pasted into an agent config), and `project` is
+// public info only (id + name, never a db path).
+export type AgentAccessStatus = {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  endpoint: string;
+  token: string;
+  project: { id: string; name: string } | null;
+  error: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -101,6 +116,18 @@ export const api = {
   putAiSettings: (patch: { apiKey?: string | null; provider?: "anthropic"; enabled?: boolean }) =>
     request<AiSettings>("/settings/ai", { method: "PUT", body: JSON.stringify(patch) }),
   usage: () => request<UsageReport>("/usage"),
+  // Agent access (bundled MCP server): every route returns the same status
+  // object the UI renders. PUT takes a partial {enabled?, port?}; regenerate
+  // mints a fresh token and severs connected agents; pin re-points the listener
+  // at another project. The routes exist only when the sidecar injected the
+  // manager — a build without it 404s, surfaced as an ApiError.
+  agentAccess: () => request<AgentAccessStatus>("/agent-access"),
+  putAgentAccess: (patch: { enabled?: boolean; port?: number }) =>
+    request<AgentAccessStatus>("/agent-access", { method: "PUT", body: JSON.stringify(patch) }),
+  regenerateAgentToken: () =>
+    request<AgentAccessStatus>("/agent-access/regenerate-token", { method: "POST" }),
+  pinAgentProject: (projectId: string) =>
+    request<AgentAccessStatus>("/agent-access/pin", { method: "POST", body: JSON.stringify({ projectId }) }),
   // Authoring skills are settings documents — full {id, title, body, enabled}
   // docs travel both ways; array order = injection order. PUT echoes the
   // persisted (deduped) array.
