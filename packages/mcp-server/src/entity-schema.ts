@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { ENTITY_TYPES, WORK_ORDER_STATUSES, WORK_TYPES } from "@kiln/core";
+import { CRITICALITIES, ENTITY_TYPES, WORK_ORDER_STATUSES, WORK_TYPES } from "@kiln/core";
 
 // Zod mirror of the core `Entity` shape, used as MCP tool output schemas so
-// clients receive validated, self-describing structured content.
+// clients receive validated, self-describing structured content. Keep every
+// field of core's `Entity` mirrored here in the same order: because Zod objects
+// compile to JSON Schema with `additionalProperties: false`, a field the store
+// emits but this mirror omits makes strict MCP clients reject the response.
 export const entitySchema = z.object({
   id: z.string(),
   type: z.enum(ENTITY_TYPES),
@@ -10,6 +13,7 @@ export const entitySchema = z.object({
   body: z.string(),
   status: z.enum(WORK_ORDER_STATUSES).nullable(),
   workType: z.enum(WORK_TYPES).nullable(),
+  criticality: z.enum(CRITICALITIES).nullable(),
   assignee: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
