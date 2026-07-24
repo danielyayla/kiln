@@ -12,6 +12,7 @@ const TOKEN = "test-secret-token";
 let store: SqliteStore;
 let httpServer: Server;
 let baseUrl: string;
+let workOrderId: string;
 
 function listen(server: Server): Promise<void> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -19,7 +20,7 @@ function listen(server: Server): Promise<void> {
 
 beforeEach(async () => {
   store = new SqliteStore(":memory:");
-  seed(store);
+  workOrderId = seed(store).workOrderId;
   httpServer = createKilnHttpServer({ store, token: TOKEN });
   await listen(httpServer);
   const { port } = httpServer.address() as AddressInfo;
@@ -91,5 +92,61 @@ describe("streamable HTTP MCP client", () => {
     const client = new Client({ name: "noauth-client", version: "0.0.0" });
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
     await expect(client.connect(transport)).rejects.toThrow();
+  });
+
+  // Regression (bug: MCP entity schema omitted `criticality`). A strict client
+  // validates each callTool's structuredContent against the tool's advertised
+  // outputSchema (compiled with additionalProperties:false); when the served
+  // entity carried a field the schema omitted, it threw
+  // `-32602 ... must NOT have additional properties`. These two tools return
+  // full entities, so they are exactly where the drift surfaced.
+  describe("entity-returning tools satisfy their strict output schema", () => {
+    async function connectStrict(): Promise<Client> {
+      const client = new Client({ name: "strict-client", version: "0.0.0" });
+      const transport = new StreamableHTTPClientTransport(new URL(baseUrl), {
+        requestInit: { headers: { authorization: `Bearer ${TOKEN}` } },
+      });
+      await client.connect(transport);
+      // Populate the client's output-schema cache so callTool validates results.
+      await client.listTools();
+      return client;
+    }
+
+    it("get_work_order returns a criticality-bearing entity without a schema error", async () => {
+      store.updateEntity(workOrderId, { criticality: "critical" });
+      const client = await connectStrict();
+      try {
+        const res = await client.callTool({ name: "get_work_order", arguments: { id: workOrderId } });
+        expect((res.structuredContent as { workOrder: { criticality: string } }).workOrder.criticality).toBe(
+          "critical",
+        );
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("update_work_order_status → done returns a criticality-bearing entity without a schema error", async () => {
+      store.updateEntity(workOrderId, { criticality: "important" });
+      const client = await connectStrict();
+      try {
+        await client.callTool({
+          name: "update_work_order_status",
+          arguments: { id: workOrderId, status: "in_progress" },
+        });
+        const done = await client.callTool({
+          name: "update_work_order_status",
+          arguments: {
+            id: workOrderId,
+            status: "done",
+            report: { summary: "closed in a test", verification: "the strict client accepted the response" },
+          },
+        });
+        const sc = done.structuredContent as { workOrder: { status: string; criticality: string } };
+        expect(sc.workOrder.status).toBe("done");
+        expect(sc.workOrder.criticality).toBe("important");
+      } finally {
+        await client.close();
+      }
+    });
   });
 });
