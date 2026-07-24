@@ -70,31 +70,76 @@ export function mergeRoute(current: Route, patch: Partial<Route>): Route {
   };
 }
 
+// `navigate` writes location with `history.pushState`/`replaceState`, which —
+// unlike assigning `location.hash` — fire neither `hashchange` nor `popstate`.
+// So the store notifies subscribers itself; it also listens to `popstate`
+// (browser/OS back-forward) and `hashchange` (a manually edited hash).
+const listeners = new Set<() => void>();
+function emit(): void {
+  for (const listener of listeners) listener();
+}
+
 function subscribe(onChange: () => void): () => void {
+  listeners.add(onChange);
+  window.addEventListener("popstate", onChange);
   window.addEventListener("hashchange", onChange);
-  return () => window.removeEventListener("hashchange", onChange);
+  return () => {
+    listeners.delete(onChange);
+    window.removeEventListener("popstate", onChange);
+    window.removeEventListener("hashchange", onChange);
+  };
 }
 
 function getSnapshot(): string {
   return window.location.hash;
 }
 
-// Subscribe a component to the current route. Re-renders on every hashchange —
-// including the ones `navigate` triggers by assigning `location.hash`.
+// Subscribe a component to the current route. Re-renders on every navigation,
+// browser back/forward, or manual hash edit.
 export function useRoute(): Route {
   const hash = useSyncExternalStore(subscribe, getSnapshot);
   return parseHash(hash);
 }
 
+// In-app history depth, stashed in `history.state`. The app's first entry is
+// depth 0 (a fresh load or a deep link has no in-app history behind it); each
+// pushState deepens it, and back/forward restore the entry's own depth. This
+// is what tells the Back control whether there is anywhere to go back to —
+// `history.length` can't, since it counts entries from before the app loaded.
+type RouteState = { kilnDepth?: number };
+
+function currentDepth(): number {
+  const state = window.history.state as RouteState | null;
+  return typeof state?.kilnDepth === "number" ? state.kilnDepth : 0;
+}
+
+// True when an in-app Back would stay inside the app (depth > 0). Drives the
+// Back control's disabled state; re-evaluated on every navigation and popstate.
+export function useCanGoBack(): boolean {
+  return useSyncExternalStore(subscribe, () => currentDepth() > 0);
+}
+
+export function goBack(): void {
+  window.history.back();
+}
+
 // The single write path. Every click, tab, and view switch routes through here
-// so location stays the source of truth. Assigning `location.hash` fires
-// `hashchange`, which drives the re-render; history push/replace tuning is a
-// later work order.
-export function navigate(patch: Partial<Route>): void {
+// so location stays the source of truth.
+//
+// `replace: true` is for in-place refinements (right-panel tab switches) that
+// should not litter the back stack — back should skip past them to the real
+// previous location. Everything else pushes a new entry, so Back is meaningful.
+export function navigate(patch: Partial<Route>, opts: { replace?: boolean } = {}): void {
+  const current = serializeRoute(parseHash(window.location.hash));
   const next = serializeRoute(mergeRoute(parseHash(window.location.hash), patch));
-  // A leading "#/pulse" and a bare "" mean the same location on first load;
-  // only write when the serialized hash actually changes to avoid a redundant
-  // history entry.
-  const currentNormalized = serializeRoute(parseHash(window.location.hash));
-  if (next !== currentNormalized) window.location.hash = next;
+  // "#/pulse" and a bare "" are the same location on first load; a no-op
+  // navigation must not push a phantom entry.
+  if (next === current) return;
+
+  if (opts.replace) {
+    window.history.replaceState({ kilnDepth: currentDepth() } satisfies RouteState, "", next);
+  } else {
+    window.history.pushState({ kilnDepth: currentDepth() + 1 } satisfies RouteState, "", next);
+  }
+  emit();
 }

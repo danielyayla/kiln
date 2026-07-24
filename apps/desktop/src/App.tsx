@@ -189,7 +189,9 @@ export function App() {
               entityId={selectedId}
               onSelect={(id) => openDoc(id)}
               tab={panelTab ?? "graph"}
-              onTabChange={(t) => navigate({ panelTab: t === "graph" ? null : t })}
+              // A tab switch is an in-place refinement, not a destination:
+              // replace so Back skips past it to the previous location.
+              onTabChange={(t) => navigate({ panelTab: t === "graph" ? null : t }, { replace: true })}
             />
           )}
         </div>

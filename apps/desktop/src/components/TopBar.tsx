@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/client";
+import { goBack, useCanGoBack } from "../lib/route";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { Button } from "./ui";
 import { color, font, radius, space } from "../theme";
@@ -60,6 +61,8 @@ export function TopBar({
       ? { state: "danger", label: "sidecar: unreachable — is it running?" }
       : { state: "ok", label: "sidecar: connected" };
 
+  const canGoBack = useCanGoBack();
+
   const provider: { state: "ok" | "warn" | "pending"; label: string } =
     health.isPending || health.isError
       ? { state: "pending", label: "model provider: checking…" }
@@ -83,6 +86,18 @@ export function TopBar({
         background: color.surface,
       }}
     >
+      {/* Browser-style back: steps through the in-app history the router
+          builds. Disabled at the first entry, where there's nowhere to go. */}
+      <Button
+        variant="ghost"
+        aria-label="Back"
+        title="Back"
+        disabled={!canGoBack}
+        onClick={goBack}
+        style={{ fontSize: font.lg, color: color.text, padding: `0 ${space(1)}px` }}
+      >
+        ‹
+      </Button>
       {/* The brand is the home affordance: it always returns to the Pulse. */}
       <Button
         variant="ghost"
