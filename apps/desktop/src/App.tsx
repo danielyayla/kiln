@@ -14,7 +14,7 @@ import { SettingsView } from "./components/SettingsView";
 import { TopBar } from "./components/TopBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { Button, Input, ToastProvider, useToast } from "./components/ui";
-import { navigate, useRoute } from "./lib/route";
+import { navigate, routeAfterProjectSwitch, useRoute } from "./lib/route";
 import { color, font, space } from "./theme";
 
 // First-run welcome (BP-6): a fresh store gets a create CTA instead of an
@@ -105,12 +105,23 @@ export function App() {
           view={view}
           onViewChange={(v) => navigate({ view: v })}
           onQuickOpen={() => setQuickOpen(true)}
-          // A project switch swapped the whole workspace: drop the selection
-          // and land on the new project's Pulse (the switcher already cleared
-          // the query cache).
-          onProjectSwitched={() => {
+          // A project switch swapped the whole workspace (the switcher already
+          // activated the new store and cleared the query cache). Keep the
+          // opened entity if it still exists in the new project; otherwise land
+          // on Pulse (Navigation & deep linking — no more hard reset).
+          onProjectSwitched={async () => {
             setQuickOpen(false);
-            navigate({ view: "pulse", selectedId: null, panelTab: null });
+            let exists = false;
+            if (selectedId) {
+              try {
+                await api.getEntity(selectedId);
+                exists = true;
+              } catch {
+                exists = false;
+              }
+            }
+            const patch = routeAfterProjectSwitch(selectedId, exists);
+            if (patch) navigate(patch, { replace: true });
           }}
         />
         {quickOpen && (

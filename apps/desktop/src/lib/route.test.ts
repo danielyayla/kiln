@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mergeRoute, parseHash, serializeRoute, type Route } from "./route";
+import {
+  linkForRoute,
+  mergeRoute,
+  parseHash,
+  routeAfterProjectSwitch,
+  serializeRoute,
+  type Route,
+} from "./route";
 
 const base: Route = { view: "pulse", selectedId: null, panelTab: null, params: {} };
 
@@ -86,5 +93,35 @@ describe("mergeRoute", () => {
 
   it("opening a document keeps the current panel tab", () => {
     expect(mergeRoute(current, { view: "documents", selectedId: "d2" }).panelTab).toBe("context");
+  });
+});
+
+describe("linkForRoute", () => {
+  const base = "http://127.0.0.1:1420/";
+
+  it("appends the route's hash to the app base so it restores on load", () => {
+    expect(linkForRoute({ view: "documents", selectedId: "d1", panelTab: "context", params: {} }, base)).toBe(
+      "http://127.0.0.1:1420/#/documents?doc=d1&panel=context",
+    );
+  });
+
+  it("round-trips: the copied link's hash parses back to the same route", () => {
+    const route: Route = { view: "board", selectedId: "d9", panelTab: null, params: {} };
+    const link = linkForRoute(route, base);
+    expect(parseHash(link.slice(base.length))).toEqual(route);
+  });
+});
+
+describe("routeAfterProjectSwitch", () => {
+  it("stays put when the opened entity still exists in the new project", () => {
+    expect(routeAfterProjectSwitch("d1", true)).toBeNull();
+  });
+
+  it("falls back to Pulse when the entity is gone", () => {
+    expect(routeAfterProjectSwitch("d1", false)).toEqual({ view: "pulse", selectedId: null, panelTab: null });
+  });
+
+  it("falls back to Pulse when there was no selection to preserve", () => {
+    expect(routeAfterProjectSwitch(null, false)).toEqual({ view: "pulse", selectedId: null, panelTab: null });
   });
 });

@@ -123,6 +123,39 @@ export function goBack(): void {
   window.history.back();
 }
 
+// Deep links (WO#3). A location is shareable: the app's base URL plus the
+// route's hash. Pasted into a fresh launch, `parseHash` on load restores the
+// exact view + document + panel tab. `base` is injected so the construction is
+// a pure, testable function; `locationBase()` supplies it at call sites.
+export function linkForRoute(route: Route, base: string): string {
+  return base + serializeRoute(route);
+}
+
+function locationBase(): string {
+  return window.location.href.split("#")[0];
+}
+
+// A shareable link to the current location (TopBar "copy link").
+export function currentLink(): string {
+  return linkForRoute(parseHash(window.location.hash), locationBase());
+}
+
+// A shareable link straight to one entity's document (entity-header "copy
+// link") — independent of whatever view you copy it from.
+export function entityLink(id: string): string {
+  return linkForRoute({ view: "documents", selectedId: id, panelTab: null, params: {} }, locationBase());
+}
+
+// After a project switch, decide where to land: keep the current location when
+// its opened entity still exists in the new store, otherwise fall back cleanly
+// to Pulse (a project is a separate store — the old id usually won't resolve).
+// Returns `null` to mean "stay put"; a patch to mean "navigate there". Pure so
+// the keep-or-reset rule is unit-tested without a store.
+export function routeAfterProjectSwitch(selectedId: string | null, entityExists: boolean): Partial<Route> | null {
+  if (selectedId && entityExists) return null;
+  return { view: "pulse", selectedId: null, panelTab: null };
+}
+
 // The single write path. Every click, tab, and view switch routes through here
 // so location stays the source of truth.
 //
