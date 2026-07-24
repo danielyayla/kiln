@@ -1,19 +1,29 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/client";
+import type { PanelTab as Tab } from "../lib/route";
 import { GraphPanel } from "./GraphPanel";
 import { ChatPanel } from "./ChatPanel";
 import { ContextInspector } from "./ContextInspector";
 import { color, font, space } from "../theme";
 
-type Tab = "graph" | "chat" | "context";
 const LABEL: Record<Tab, string> = { graph: "Graph", chat: "Chat", context: "Context" };
 
 // The right column: the graph neighbourhood, plus a Chat tab for documents that
 // can be refined (requirements/blueprints) and a Context tab for work orders
 // (the assembly inspector, Phase 8). Owns the column chrome so the inner panels
-// render body-only.
-export function RightPanel({ entityId, onSelect }: { entityId: string; onSelect: (id: string) => void }) {
+// render body-only. The active tab is route-driven (BP: Navigation & deep
+// linking) so it is addressable and restored on reload.
+export function RightPanel({
+  entityId,
+  onSelect,
+  tab,
+  onTabChange,
+}: {
+  entityId: string;
+  onSelect: (id: string) => void;
+  tab: Tab;
+  onTabChange: (tab: Tab) => void;
+}) {
   const entity = useQuery({ queryKey: ["entity", entityId], queryFn: () => api.getEntity(entityId) });
   const type = entity.data?.type;
   const tabs: Tab[] = [
@@ -21,7 +31,8 @@ export function RightPanel({ entityId, onSelect }: { entityId: string; onSelect:
     ...(type === "requirement" || type === "blueprint" ? (["chat"] as const) : []),
     ...(type === "work_order" ? (["context"] as const) : []),
   ];
-  const [tab, setTab] = useState<Tab>("graph");
+  // A tab that isn't valid for this entity type (e.g. a stale `panel=context`
+  // on a requirement) falls back to graph without touching the route.
   const active: Tab = tabs.includes(tab) ? tab : "graph";
 
   return (
@@ -49,7 +60,7 @@ export function RightPanel({ entityId, onSelect }: { entityId: string; onSelect:
               role="tab"
               aria-selected={active === t}
               data-testid={`right-tab-${t}`}
-              onClick={() => setTab(t)}
+              onClick={() => onTabChange(t)}
               style={{
                 border: "none",
                 background: "transparent",
