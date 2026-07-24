@@ -1,105 +1,73 @@
 # Connecting a coding agent to Kiln
 
-How to run the Kiln MCP server and drive the work-order loop from Claude Code
-(or any MCP client that speaks streamable HTTP). This is the Phase-1 loop:
+How to hand the work-order loop and the survey surface to Claude Code (or any
+MCP client that speaks streamable HTTP). This is the Phase-1 loop:
 `list_ready_work_orders` → `get_work_order` → implement → `update_work_order_status`.
-Three further tools (§5) are the survey surface: `get_project_shape` (the
+Three further tools (§4) are the survey surface: `get_project_shape` (the
 read-only populated-project pre-flight) plus `propose_feature` and
 `propose_root_overview` — the ONLY document writes that exist over MCP, and
 both are gated: proposals land as pending suggestions a human resolves in the
 app.
 
-## 1. Build and seed
+There are two ways to serve these tools, and they run the **same bridge** —
+same tools, same bearer auth, same context receipts:
+
+- **The bundled endpoint (recommended).** The installed desktop app hosts the
+  MCP server itself, behind a Settings toggle. No repo, no package manager, no
+  terminal. This is §1 and the default for everyone who downloaded the app.
+- **The standalone server (headless / CI).** Run `packages/mcp-server` from a
+  repo checkout with hand-set environment variables. This is for headless and
+  CI contexts where there is no app; see [§6 Headless / CI](#6-headless--ci).
+
+## 1. Enable agent access in the app
+
+In the desktop app, open **Settings → Agent access** and turn the toggle on.
+Enabling it:
+
+- generates a bearer token (a locally-minted credential for a localhost
+  endpoint — shown in full because its whole purpose is being pasted into an
+  agent config),
+- binds the MCP endpoint to a localhost port (default `4824`; editable, and a
+  bind conflict surfaces as a loud status, never a silent fallback),
+- **pins the currently-active project** — the endpoint serves that project for
+  as long as it stays on, and the status line names it.
+
+The status line reports running/stopped, the port, and the served project.
+Toggle state, port, and token persist across app restarts; quitting the app
+stops the endpoint and relaunching with the toggle on restores it with the
+same token and port.
+
+### Which project does the endpoint serve?
+
+The endpoint serves a **dedicated store on the project that was active when you
+enabled it** — the pinned project, named in the status line. This is the
+no-yank guarantee: **switching the app's active project does NOT move what a
+connected agent sees.** An agent mid-work-order stays on the project it started
+with, by design.
+
+Re-pointing the endpoint at another project is an **explicit action**: when the
+app's active project differs from the pinned one, Settings shows a re-pin
+control naming both; clicking it closes the pinned store, opens the newly-active
+one, and restarts the listener with the same token and port. Removing the
+pinned project from the registry disables agent access loudly (the status names
+the reason).
+
+## 2. Register with Claude Code
+
+Settings renders a ready-to-paste registration snippet, filled in with the live
+URL and token — **Claude Code first**, then a generic JSON config block, each
+with a copy button. Copy the Claude Code command and run it:
 
 ```sh
-pnpm install
-pnpm -r build
-
-# Create (or reuse) a store and insert a demo chain:
-#   artifact → requirement → blueprint → ready work order
-# Prints the ready work order's id on stdout. The store resolves like every
-# other entry point: KILN_DB_PATH if set, else the registry's default
-# project, else ~/.kiln/kiln.db (see "Which project does the server serve?"
-# in §2).
-pnpm -C packages/mcp-server seed
-```
-
-> **Node 22.x:** the store uses the built-in `node:sqlite`, which needs the
-> `--experimental-sqlite` flag. The package's `seed`/`start` scripts pass it for
-> you. On Node 24+ no flag is needed.
-
-## 2. Start the server
-
-```sh
-KILN_MCP_TOKEN=choose-a-secret \
-KILN_MCP_PORT=3777 \
-pnpm -C packages/mcp-server start
-```
-
-You should see:
-
-```
-kiln-mcp-server listening on http://127.0.0.1:3777/mcp (db: /Users/you/.kiln/kiln.db)
-```
-
-Environment variables:
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `KILN_DB_PATH` | — | Absolute path to a SQLite file — the ultimate override; when set, the project registry is ignored entirely. Shared with the app (WAL makes this safe). |
-| `KILN_PROJECT` | — | A registered project's id, slug, or exact name. Unknown values refuse to start (never a silently-wrong store). The `--project <ref>` argv flag is the same thing, and beats an inherited env value. |
-| `KILN_MCP_TOKEN` | — (required) | Bearer token clients must present. Server refuses to start without it. |
-| `KILN_MCP_PORT` | `3001` | HTTP port. |
-| `KILN_MCP_HOST` | `127.0.0.1` | Bind address. Keep it loopback unless you know why not. |
-| `KILN_MCP_ENDPOINT` | `/mcp` | HTTP path of the MCP endpoint. |
-
-Every request without a valid `Authorization: Bearer <token>` header is refused
-with `401` before it reaches any tool.
-
-### Which project does the server serve?
-
-Kiln supports multiple **projects** — fully isolated workspaces, one SQLite
-file each, listed in `~/.kiln/projects.json` (the desktop app's switcher, the
-CLI's `kiln projects` commands, and this server all read the same registry).
-Every process resolves its store **once, at startup**, in this order:
-
-1. `KILN_DB_PATH` — explicit file path, registry ignored.
-2. `--project <id|slug|name>` / `KILN_PROJECT` — registry lookup; unknown
-   refs are a startup error.
-3. The registry's **default project** (the one the desktop app opened last).
-4. No registry at all → the legacy `~/.kiln/kiln.db`.
-
-The startup log names the resolved file — that line is how you confirm which
-project a running server is bound to:
-
-```
-kiln-mcp-server listening on http://127.0.0.1:3777/mcp (db: /Users/you/.kiln/kiln.db)
-```
-
-Resolution is **per-process, never synchronized**. Switching projects in the
-desktop app does NOT move a running MCP server (or CLI invocation) — an agent
-mid-work-order stays on the project it started with, by design. Two caveats
-that follow from this:
-
-- App activation *promotes* that project to the registry default, so a server
-  **restarted later** without an explicit `--project`/`KILN_PROJECT` will
-  follow wherever the app last was. Pin the project explicitly if the server
-  must always serve the same one.
-- Removing a project (app or registry) only deletes its registry entry — the
-  store file always survives on disk. Never assume removal freed data.
-
-## 3. Register with Claude Code
-
-```sh
-claude mcp add --transport http kiln http://127.0.0.1:3777/mcp \
-  --header "Authorization: Bearer choose-a-secret"
+claude mcp add --transport http kiln http://127.0.0.1:4824/mcp \
+  --header "Authorization: Bearer <the token shown in Settings>"
 ```
 
 Verify the connection (this performs a real MCP handshake):
 
 ```sh
 claude mcp list
-# kiln: http://127.0.0.1:3777/mcp (HTTP) - ✔ Connected
+# kiln: http://127.0.0.1:4824/mcp (HTTP) - ✔ Connected
 ```
 
 Then start `claude` in your project. The six tools appear as
@@ -107,9 +75,14 @@ Then start `claude` in your project. The six tools appear as
 `mcp__kiln__update_work_order_status`, `mcp__kiln__get_project_shape`,
 `mcp__kiln__propose_feature`, and `mcp__kiln__propose_root_overview`.
 
-Other MCP clients: any client that supports streamable HTTP works the same way —
-point it at the URL and supply the `Authorization` header. With the TypeScript
-SDK:
+Regenerating the token in Settings mints a fresh credential and invalidates the
+old one immediately — re-run `claude mcp add` (or re-paste the updated snippet)
+after regenerating.
+
+**Other MCP clients** — the generic JSON block Settings renders is the
+`mcpServers` shape (`.mcp.json` / `claude_desktop_config.json`); any client that
+speaks streamable HTTP works the same way: point it at the URL and supply the
+`Authorization: Bearer <token>` header. With the TypeScript SDK:
 
 ```ts
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -117,13 +90,16 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 const client = new Client({ name: "my-agent", version: "0.0.0" });
 await client.connect(
-  new StreamableHTTPClientTransport(new URL("http://127.0.0.1:3777/mcp"), {
-    requestInit: { headers: { authorization: "Bearer choose-a-secret" } },
+  new StreamableHTTPClientTransport(new URL("http://127.0.0.1:4824/mcp"), {
+    requestInit: { headers: { authorization: "Bearer <the token shown in Settings>" } },
   }),
 );
 ```
 
-## 4. Run the loop
+Every request without a valid `Authorization: Bearer <token>` header is refused
+with `401` before it reaches any tool.
+
+## 3. Run the loop
 
 Ask the agent to work the board, or call the tools directly:
 
@@ -217,7 +193,7 @@ Ask the agent to work the board, or call the tools directly:
      Invalid completion report — no receipt recorded, status unchanged: report.summary: summary must not be empty or whitespace-only
      ```
 
-## 5. The survey surface — pre-flight and gated document writes
+## 4. The survey surface — pre-flight and gated document writes
 
 `get_project_shape`, `propose_feature`, and `propose_root_overview` exist for
 **survey agents** bootstrapping a brownfield repository into a fresh Kiln
@@ -250,7 +226,7 @@ Output:
 
 The classification is authoritative for the *store's contents*; it cannot
 tell you whether the bound store is the one the human *intended* — pair it
-with the `rootTitle` check and the startup-log line from §2.
+with the `rootTitle` check and the served-project name in Settings (§1).
 
 ### `propose_feature` — one feature per call
 
@@ -366,7 +342,7 @@ Rejections beyond the shared blank/cap catalog above (all create nothing):
 | `Root overview refused: … has been edited since seeding.` | The architecture blueprint no longer holds the pristine template. |
 | `Root overview refused: … has N pending suggestion(s).` | A proposal already awaits review on the root pair (anchor lock — suggestions anchor to the current body). |
 
-## 6. Install the execution skill
+## 5. Install the execution skill
 
 The repo ships a skill that teaches a coding agent the execute-a-work-order
 procedure — pick only unblocked ready orders, read the full context, restate
@@ -392,6 +368,101 @@ The agent then loads it whenever it works the Kiln board (the frontmatter
 **Cursor / other agents** — the body is plain markdown with no Claude-specific
 syntax: paste it into `.cursor/rules/kiln-execute.mdc` (or your agent's
 equivalent rules file), dropping the YAML frontmatter.
+
+## 6. Headless / CI
+
+For headless and CI contexts — no desktop app — run the same bridge from a repo
+checkout as a standalone server. The tools, auth, receipts, and survey surface
+are identical to the bundled endpoint above (§3–§5 apply unchanged); only the
+launch differs.
+
+### Build and seed
+
+```sh
+pnpm install
+pnpm -r build
+
+# Create (or reuse) a store and insert a demo chain:
+#   artifact → requirement → blueprint → ready work order
+# Prints the ready work order's id on stdout. The store resolves like every
+# other entry point: KILN_DB_PATH if set, else the registry's default
+# project, else ~/.kiln/kiln.db (see "Which project does the server serve?"
+# below).
+pnpm -C packages/mcp-server seed
+```
+
+> **Node 22.x:** the store uses the built-in `node:sqlite`, which needs the
+> `--experimental-sqlite` flag. The package's `seed`/`start` scripts pass it for
+> you. On Node 24+ no flag is needed.
+
+### Start the server
+
+```sh
+KILN_MCP_TOKEN=choose-a-secret \
+KILN_MCP_PORT=3777 \
+pnpm -C packages/mcp-server start
+```
+
+You should see:
+
+```
+kiln-mcp-server listening on http://127.0.0.1:3777/mcp (db: /Users/you/.kiln/kiln.db)
+```
+
+Environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `KILN_DB_PATH` | — | Absolute path to a SQLite file — the ultimate override; when set, the project registry is ignored entirely. Shared with the app (WAL makes this safe). |
+| `KILN_PROJECT` | — | A registered project's id, slug, or exact name. Unknown values refuse to start (never a silently-wrong store). The `--project <ref>` argv flag is the same thing, and beats an inherited env value. |
+| `KILN_MCP_TOKEN` | — (required) | Bearer token clients must present. Server refuses to start without it. |
+| `KILN_MCP_PORT` | `3001` | HTTP port. |
+| `KILN_MCP_HOST` | `127.0.0.1` | Bind address. Keep it loopback unless you know why not. |
+| `KILN_MCP_ENDPOINT` | `/mcp` | HTTP path of the MCP endpoint. |
+
+Every request without a valid `Authorization: Bearer <token>` header is refused
+with `401` before it reaches any tool.
+
+Register it with Claude Code exactly as in §2, substituting the port and token
+you set:
+
+```sh
+claude mcp add --transport http kiln http://127.0.0.1:3777/mcp \
+  --header "Authorization: Bearer choose-a-secret"
+```
+
+### Which project does the server serve?
+
+Kiln supports multiple **projects** — fully isolated workspaces, one SQLite
+file each, listed in `~/.kiln/projects.json` (the desktop app's switcher, the
+CLI's `kiln projects` commands, and this server all read the same registry).
+Every process resolves its store **once, at startup**, in this order:
+
+1. `KILN_DB_PATH` — explicit file path, registry ignored.
+2. `--project <id|slug|name>` / `KILN_PROJECT` — registry lookup; unknown
+   refs are a startup error.
+3. The registry's **default project** (the one the desktop app opened last).
+4. No registry at all → the legacy `~/.kiln/kiln.db`.
+
+The startup log names the resolved file — that line is how you confirm which
+project a running server is bound to:
+
+```
+kiln-mcp-server listening on http://127.0.0.1:3777/mcp (db: /Users/you/.kiln/kiln.db)
+```
+
+Resolution is **per-process, never synchronized**. Switching projects in the
+desktop app does NOT move a running MCP server (or CLI invocation) — an agent
+mid-work-order stays on the project it started with, by design (the same
+no-yank guarantee the bundled endpoint gives structurally). Two caveats that
+follow from this:
+
+- App activation *promotes* that project to the registry default, so a server
+  **restarted later** without an explicit `--project`/`KILN_PROJECT` will
+  follow wherever the app last was. Pin the project explicitly if the server
+  must always serve the same one.
+- Removing a project (app or registry) only deletes its registry entry — the
+  store file always survives on disk. Never assume removal freed data.
 
 ## 7. Authoring skills (customizable house standards)
 
@@ -423,9 +494,9 @@ are the fallback, not a casualty.
 
 ## Verified run (WO-07)
 
-This exact sequence was executed against a seeded store on 2026-07-06 with
-Claude Code 2.1.199 (registration + handshake) and the MCP SDK client v1.29.0
-(tool calls):
+An earlier standalone-server run of this exact loop was executed against a
+seeded store on 2026-07-06 with Claude Code 2.1.199 (registration + handshake)
+and the MCP SDK client v1.29.0 (tool calls):
 
 | Step | Result |
 |---|---|
@@ -438,4 +509,6 @@ Claude Code 2.1.199 (registration + handshake) and the MCP SDK client v1.29.0
 | Re-open store in a fresh process | Work order status is `done` |
 
 **This closes Phase 1: a coding agent pulled a ready work order with its full
-intent chain over MCP and reported completion back to the shared store.**
+intent chain over MCP and reported completion back to the shared store** — and
+as of the bundled endpoint, the same loop runs from an app download with no
+terminal at all.

@@ -212,27 +212,29 @@
   </div>
 
   <h2 id="prereqs">Prerequisites</h2>
-  <p>How much you need depends on how far you want to go:</p>
+  <p>The desktop app is the only install Kiln requires:</p>
   <ul>
     <li><strong>Author and review a graph</strong> — just the desktop app. Download it from the
       <a href="./index.html">home page</a> (macOS / Windows). Add an Anthropic API key in
       <em>Settings</em> to enable the authoring agents (draft, refine, review, extract).</li>
-    <li><strong>Hand work orders to a coding agent, or survey an existing repo</strong> — this runs
-      through Kiln’s <strong>MCP server</strong> and the packaged skills, which today live in the
-      <a href="https://github.com/danielyayla/kiln">repository</a>. You’ll need
-      <code>git clone</code>, <strong>Node 22.5+</strong>, and <code>pnpm</code>:
-      <pre><code>git clone https://github.com/danielyayla/kiln
-cd kiln
-pnpm install
-pnpm -r build</code></pre>
-    </li>
+    <li><strong>Hand work orders to a coding agent, or survey an existing repo</strong> — the
+      installed app hosts the MCP endpoint itself. Flip <em>Settings → Agent access</em> on, and it
+      generates the token, picks the port, and hands you a copy-paste snippet. No repo clone, no
+      package manager, no terminal — see <a href="#handoff">Handing work to a coding agent</a>.</li>
   </ul>
   <div class="callout">
-    <strong>Same store, two doors.</strong> The desktop app and the MCP server read the same
-    project files (one SQLite database per project, listed in <code>~/.kiln/projects.json</code>).
-    You author and review in the app; agents connect over MCP. Switching projects in the app does
-    not move a server that’s already running — a server binds to one project at startup and stays
-    there.
+    <strong>One store, two surfaces.</strong> The human works in the desktop app; a coding agent
+    connects to the app’s bundled MCP endpoint. Both act on the same project files (one SQLite
+    database per project, listed in <code>~/.kiln/projects.json</code>). The endpoint <em>pins</em>
+    the project that was active when you enabled it — switching the app’s active project never
+    yanks a connected agent. Re-pointing it at another project is an explicit click in Settings.
+  </div>
+  <div class="callout">
+    <strong>Headless / CI.</strong> If you have no app — a CI runner, a headless box — the same
+    bridge still runs as a standalone server from a repo checkout (<code>git clone</code>,
+    Node 22.5+, <code>pnpm</code>). That path lives in
+    <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md → Headless / CI</a>;
+    everyone who downloaded the app should use the toggle instead.
   </div>
 
   <h2 id="greenfield">Path A — Greenfield (new project)</h2>
@@ -273,9 +275,9 @@ pnpm -r build</code></pre>
         the required sections).</p>
     </li>
     <li>
-      <h3>Hand it off <span class="pill pill-term">MCP</span></h3>
-      <p>Point a coding agent at the project over MCP and let it work the board — see
-        <a href="#handoff">Handing work to a coding agent</a> below.</p>
+      <h3>Hand it off <span class="pill pill-app">app</span> <span class="pill pill-term">MCP</span></h3>
+      <p>Turn on <em>Settings → Agent access</em>, paste the snippet into your coding agent, and let
+        it work the board — see <a href="#handoff">Handing work to a coding agent</a> below.</p>
     </li>
   </ol>
 
@@ -296,20 +298,19 @@ pnpm -r build</code></pre>
         in it first.</p>
     </li>
     <li>
-      <h3>Start the MCP server, bound to that project <span class="pill pill-term">terminal</span></h3>
-      <pre><code>KILN_MCP_TOKEN=choose-a-secret \
-KILN_MCP_PORT=3777 \
-KILN_PROJECT="&lt;your fresh project name&gt;" \
-pnpm -C packages/mcp-server start</code></pre>
-      <p>The startup log prints the exact database file it’s serving — confirm it’s the fresh project
-        before going further. A survey lands dozens of entities; pointed at the wrong project it
-        pollutes a real one.</p>
+      <h3>Enable Agent access, pinned to that project <span class="pill pill-app">app</span></h3>
+      <p>With the fresh project active, open <em>Settings → Agent access</em> and flip it on. The app
+        starts a local MCP endpoint pinned to that project, generates a bearer token, and shows the
+        served-project name in its status line — confirm it reads the fresh project before going
+        further. A survey lands dozens of entities; pointed at the wrong project it pollutes a real
+        one.</p>
     </li>
     <li>
       <h3>Connect your coding agent and run the survey skill <span class="pill pill-term">MCP</span></h3>
-      <p>Register the server with your MCP client (for Claude Code, see
-        <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md</a>),
-        install the <code>kiln-survey</code> skill, and ask the agent to “survey this repo into Kiln.”
+      <p>Copy the registration snippet from <em>Settings → Agent access</em> (Claude Code first, then a
+        generic JSON block) and paste it into your MCP client — for the full walkthrough see
+        <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md</a>.
+        Install the <code>kiln-survey</code> skill, then ask the agent to “survey this repo into Kiln.”
         Under the hood it:</p>
       <ul>
         <li>calls <code>get_project_shape</code> to confirm the target is <strong>fresh</strong>;</li>
@@ -337,15 +338,22 @@ pnpm -C packages/mcp-server start</code></pre>
 
   <h2 id="handoff">Handing work to a coding agent</h2>
   <p>
-    Once a project has ready work orders, any MCP client (Claude Code, Cursor, …) can work the board
-    through three tools: <code>list_ready_work_orders</code> → <code>get_work_order</code> →
+    Turn on <em>Settings → Agent access</em> in the app. It starts a local MCP endpoint pinned to the
+    active project, generates a bearer token, and renders a copy-paste registration snippet — the
+    Claude Code command first, then a generic JSON config block. Paste it into your agent and you’re
+    connected; no terminal, no repo checkout.
+  </p>
+  <p>
+    From there any MCP client (Claude Code, Cursor, …) works the board through three tools:
+    <code>list_ready_work_orders</code> → <code>get_work_order</code> →
     <code>update_work_order_status</code>. The agent installs the <code>kiln-execute</code> skill,
     picks a ready work order, receives the full lineage in one payload (and Kiln records a context
     receipt on delivery), implements it, and reports status back. Execution agents never author or
     edit Kiln documents — that only happens through suggestions a human resolves.
   </p>
   <p>
-    The full connection walkthrough — building, seeding, registering the server, and the loop — is in
+    The full connection walkthrough — the toggle, the snippet, and the loop, plus the standalone
+    headless / CI server — is in
     <a href="https://github.com/danielyayla/kiln/blob/main/docs/CONNECTING.md">docs/CONNECTING.md</a>.
   </p>
 
@@ -359,8 +367,10 @@ pnpm -C packages/mcp-server start</code></pre>
       <code>create</code>, <code>link</code>, <code>draft</code>, <code>extract</code>,
       <code>review</code>, <code>status</code>, <code>export</code>, <code>projects</code>. Same store
       as the app.</li>
-    <li><strong>MCP server <span class="pill pill-term">MCP</span></strong> — the agent surface.
-      The execution loop plus the gated survey tools. Bound to one project at startup.</li>
+    <li><strong>MCP endpoint <span class="pill pill-app">app</span> <span class="pill pill-term">MCP</span></strong> —
+      the agent surface. The execution loop plus the gated survey tools. The desktop app hosts it
+      behind the <em>Agent access</em> toggle, pinned to one project; a standalone server serves the
+      same bridge for headless / CI.</li>
   </ul>
   <div class="callout">
     <strong>Everything stays local and portable.</strong> Each project is one SQLite file on your

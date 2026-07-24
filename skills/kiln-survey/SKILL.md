@@ -25,13 +25,16 @@ or rejects every document in the Kiln app. Nothing you propose becomes real
 until they do — and that gate is the point, not an inconvenience. You never
 accept, and you never propose anything you cannot cite code for.
 
-**Which project are you proposing into?** The MCP server binds to exactly ONE
-project, resolved once at its startup (`KILN_DB_PATH` > `--project`/
-`KILN_PROJECT` > the registry's default project) and never changed at runtime.
-The server's startup log names the store file it serves. A survey lands dozens
-of entities — pointed at the wrong project it pollutes a real store. Confirm
-with the human that the server is bound to the fresh project created for this
-survey **before proposing anything**.
+**Which project are you proposing into?** The MCP endpoint serves exactly ONE
+project, pinned once when it starts and never changed at runtime. With the
+bundled endpoint (the app's *Settings → Agent access* toggle — the default
+path), the served project is the one that was active when it was enabled, and
+the Settings status line names it. With the standalone server (headless / CI),
+it is resolved at startup (`KILN_DB_PATH` > `--project`/`KILN_PROJECT` > the
+registry's default project) and the startup log names the store file. A survey
+lands dozens of entities — pointed at the wrong project it pollutes a real
+store. Confirm with the human that the endpoint is pinned to the fresh project
+created for this survey **before proposing anything**.
 
 ## Preconditions
 
@@ -343,8 +346,10 @@ when distinct subsystems ground distinct claims):
 **401 / unauthorized** — bearer token missing or wrong. Fix the MCP
 registration (`Authorization: Bearer <token>`); don't retry blindly.
 
-**Connection refused** — the server is down. Ask the human to start it,
-bound to the survey project:
+**Connection refused** — the endpoint is down. With the bundled endpoint, ask
+the human to turn on *Settings → Agent access* (pinned to the survey project)
+and re-paste the snippet. Headless / CI: ask them to start the standalone
+server bound to the survey project,
 `KILN_MCP_TOKEN=<secret> KILN_PROJECT=<slug> pnpm -C packages/mcp-server start`
 (in the Kiln repo).
 
