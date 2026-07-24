@@ -10,6 +10,9 @@ import {
   SqliteStore,
   type Store,
 } from "@kiln/core";
+// NB: the sidecar bundle aliases this package to its src/server.ts (see
+// tsup.config.ts) — the dist index is also the `kiln-mcp` CLI, and its
+// run-when-main guard misfires once inlined into the bundle.
 import { createKilnHttpServer } from "@kiln/mcp-server";
 
 // Agent access (bundled MCP server feature): the sidecar hosts the unmodified
@@ -104,10 +107,19 @@ export interface AgentAccessOptions {
 
 export interface AgentAccess {
   status(): AgentAccessStatus;
+  /** Start the listener iff the persisted config says enabled — boot wiring. */
+  boot(): Promise<void>;
   enable(): Promise<AgentAccessStatus>;
   disable(): Promise<AgentAccessStatus>;
+  /** Persist a new port; a running listener rebinds to it immediately. */
+  setPort(port: number): Promise<AgentAccessStatus>;
   regenerateToken(): Promise<AgentAccessStatus>;
   pin(projectId: string): Promise<AgentAccessStatus>;
+  /**
+   * The registry lost this project (projects manager `remove`). If it was the
+   * pin, agent access disables loudly — the next status carries the reason.
+   */
+  projectRemoved(projectId: string, name: string): Promise<void>;
   /** Stop the listener and close the store without changing persisted config. */
   close(): Promise<void>;
 }
@@ -203,6 +215,10 @@ export function createAgentAccess(opts: AgentAccessOptions = {}): AgentAccess {
   };
 
   return {
+    async boot(): Promise<void> {
+      if (config.enabled) await start();
+    },
+
     status(): AgentAccessStatus {
       const project = pinnedProject();
       return {
@@ -236,6 +252,14 @@ export function createAgentAccess(opts: AgentAccessOptions = {}): AgentAccess {
       return this.status();
     },
 
+    async setPort(port: number): Promise<AgentAccessStatus> {
+      persist({ port });
+      // A running listener follows the port immediately; when down, the
+      // persisted port applies on the next enable.
+      if (httpServer) await start();
+      return this.status();
+    },
+
     async regenerateToken(): Promise<AgentAccessStatus> {
       persist({ token: generateToken() });
       // Restart so the new token gates the very next request; when the
@@ -251,6 +275,16 @@ export function createAgentAccess(opts: AgentAccessOptions = {}): AgentAccess {
       persist({ projectId });
       if (httpServer) await start();
       return this.status();
+    },
+
+    async projectRemoved(projectId: string, name: string): Promise<void> {
+      if (config.projectId !== projectId) return;
+      // Disable loudly (blueprint convention): the pin is cleared so a later
+      // enable falls back to the registry default instead of a ghost id, and
+      // the reason names the removed project until the next lifecycle action.
+      persist({ enabled: false, projectId: null });
+      await stop();
+      lastError = `pinned project "${name}" was removed from the registry — agent access was disabled; pin another project to re-enable`;
     },
 
     close: stop,

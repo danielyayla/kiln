@@ -283,6 +283,65 @@ describe("pin", () => {
   });
 });
 
+describe("boot wiring", () => {
+  it("boot() with a persisted enabled config serves MCP without any API call", async () => {
+    const { id } = project("Alpha", "alpha ready wo");
+    const port = await freePort();
+    const token = "a".repeat(64);
+    writeAgentAccessConfig({ enabled: true, port, token, projectId: id }, home);
+    access = createAgentAccess({ home, openStore: trackingOpenStore });
+
+    await access.boot();
+    const status = access.status();
+    expect(status.running).toBe(true);
+    expect(await listReadyTitles(status.endpoint, token)).toEqual(["alpha ready wo"]);
+  });
+
+  it("boot() with a disabled config starts nothing", async () => {
+    const { id } = project("Alpha", "wo");
+    const port = await freePort();
+    writeAgentAccessConfig({ enabled: false, port, token: "t", projectId: id }, home);
+    access = createAgentAccess({ home, openStore: trackingOpenStore });
+
+    await access.boot();
+    expect(access.status().running).toBe(false);
+    expect(opened).toHaveLength(0);
+  });
+
+  it("close() after boot stops the listener and closes the dedicated store, leaving config untouched", async () => {
+    const { id } = project("Alpha", "wo");
+    const port = await freePort();
+    const token = "b".repeat(64);
+    writeAgentAccessConfig({ enabled: true, port, token, projectId: id }, home);
+    access = createAgentAccess({ home, openStore: trackingOpenStore });
+    await access.boot();
+
+    await access.close();
+    await expect(post(access.status().endpoint, token)).rejects.toThrow(); // connection refused
+    expect(opened).toHaveLength(1);
+    expect(opened[0].closed).toBe(true);
+    expect(readAgentAccessConfig(home).config.enabled).toBe(true); // shutdown ≠ disable
+  });
+});
+
+describe("projectRemoved", () => {
+  it("disables loudly when the pin is removed; other removals are ignored", async () => {
+    const { id } = project("Alpha", "alpha ready wo");
+    const { access: a, endpoint, token } = await enabledAccess(id);
+
+    await a.projectRemoved("someone-else", "Other");
+    expect(a.status().running).toBe(true);
+
+    await a.projectRemoved(id, "Alpha");
+    const status = a.status();
+    expect(status.enabled).toBe(false);
+    expect(status.running).toBe(false);
+    expect(status.error).toContain('"Alpha"');
+    expect(readAgentAccessConfig(home).config).toMatchObject({ enabled: false, projectId: null });
+    await expect(post(endpoint, token)).rejects.toThrow();
+  });
+});
+
 describe("bind failure", () => {
   let blocker: Server;
   afterEach(() => new Promise<void>((resolve) => blocker.close(() => resolve())));

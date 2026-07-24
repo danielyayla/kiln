@@ -56,6 +56,7 @@ import {
   type ModelProvider,
 } from "@kiln/agents";
 import type { ProjectManager } from "./projects.js";
+import type { AgentAccess } from "./agent-access.js";
 
 // The sidecar API: a thin HTTP veneer over the core Store. Every route is a
 // direct call into core — no product logic lives here or in the webview
@@ -86,6 +87,15 @@ const CreateLink = z.object({
 });
 
 const ProjectName = z.object({ name: z.string().trim().min(1) });
+
+// Agent access control routes (bundled MCP server): app-private on 4823, like
+// everything else here — the bearer-authed surface they manage lives on the
+// agent port. Partial update, mirroring the AI-settings PUT.
+const PutAgentAccess = z.object({
+  enabled: z.boolean().optional(),
+  port: z.number().int().min(1).max(65535).optional(),
+});
+const PinProject = z.object({ projectId: z.string().min(1) });
 
 // AI settings live under fixed keys in the store's settings table (AI
 // settings & usage). The raw key is written here and read by createProvider —
@@ -165,6 +175,13 @@ export interface ApiDeps {
    * as before the feature.
    */
   projects?: ProjectManager;
+  /**
+   * The agent-access manager (bundled MCP server feature). When present, the
+   * /agent-access routes are registered and removing the pinned project via
+   * the projects routes disables agent access loudly. Absent, the sidecar
+   * behaves exactly as before the feature.
+   */
+  agentAccess?: AgentAccess;
 }
 
 export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
@@ -637,9 +654,46 @@ export function buildApi(store: Store, deps: ApiDeps = {}): Hono {
       return c.json(projects.rename(c.req.param("id"), name));
     });
 
-    app.delete("/projects/:id", (c) => {
-      projects.remove(c.req.param("id"));
+    app.delete("/projects/:id", async (c) => {
+      const id = c.req.param("id");
+      // Capture the pin BEFORE removal — afterwards the registry no longer
+      // knows the project's name, and the disabled status must name it.
+      const pinned = deps.agentAccess?.status().project;
+      projects.remove(id);
+      if (deps.agentAccess && pinned?.id === id) {
+        await deps.agentAccess.projectRemoved(id, pinned.name);
+      }
       return c.json({ ok: true });
+    });
+  }
+
+  // Agent access (bundled MCP server): the status object is the single source
+  // the Settings UI renders — token in full by design (a locally-minted
+  // credential whose purpose is being pasted into an agent config), project
+  // as public info only (no dbPath). Zod parses before any state changes, so
+  // a rejected request mutates nothing.
+  if (deps.agentAccess) {
+    const agentAccess = deps.agentAccess;
+
+    app.get("/agent-access", (c) => c.json(agentAccess.status()));
+
+    app.put("/agent-access", async (c) => {
+      const patch = PutAgentAccess.parse(await c.req.json());
+      // Disable before a port change (no pointless rebind on the old flag),
+      // enable after it (the new port is what starts).
+      if (patch.enabled === false) await agentAccess.disable();
+      if (patch.port !== undefined) await agentAccess.setPort(patch.port);
+      if (patch.enabled === true) await agentAccess.enable();
+      return c.json(agentAccess.status());
+    });
+
+    app.post("/agent-access/regenerate-token", async (c) =>
+      c.json(await agentAccess.regenerateToken()),
+    );
+
+    app.post("/agent-access/pin", async (c) => {
+      const { projectId } = PinProject.parse(await c.req.json());
+      return c.json(await agentAccess.pin(projectId));
     });
   }
 
