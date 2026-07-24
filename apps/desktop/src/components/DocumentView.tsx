@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Finding, WorkOrderCandidate } from "@kiln/agents";
 import type { Criticality } from "@kiln/core";
-import { api } from "../lib/client";
+import { api, ApiError } from "../lib/client";
+import { copyText } from "../lib/clipboard";
 import { CRITICALITIES, effectiveCriticality } from "../lib/criticality";
 import { friendlyError } from "../lib/errors";
+import { entityLink } from "../lib/route";
 import { Editor } from "./Editor";
 import { ProposalWalkBanner } from "./ProposalQueue";
 import { RevisionDiff } from "./RevisionDiff";
@@ -44,7 +46,14 @@ export function DocumentView({
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [openRevisionId, setOpenRevisionId] = useState<string | null>(null);
 
-  const entity = useQuery({ queryKey: ["entity", entityId], queryFn: () => api.getEntity(entityId) });
+  const entity = useQuery({
+    queryKey: ["entity", entityId],
+    queryFn: () => api.getEntity(entityId),
+    // A stale/unknown id (e.g. from a deep link into a store that no longer has
+    // it) is a 404, not a blip — resolve it to the not-found state at once
+    // instead of retrying. Other failures keep the default retry.
+    retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 3,
+  });
   const isRequirement = entity.data?.type === "requirement";
 
   // child_of only applies to requirements — no query for the other types.
@@ -167,8 +176,31 @@ export function DocumentView({
   });
 
   if (entity.isPending) return <p>loading…</p>;
-  if (!entity.data) return <p>not found</p>;
+  // A stale deep link or an id from another project: land on an in-view
+  // not-found with a way out, never a blank canvas (Navigation & deep linking).
+  if (!entity.data) {
+    return (
+      <div data-testid="entity-not-found" style={{ maxWidth: 460, margin: "12vh auto 0", textAlign: "center" }}>
+        <h2 style={{ marginBottom: space(2) }}>Nothing here</h2>
+        <p style={{ color: color.muted, fontSize: font.base, marginBottom: space(4) }}>
+          <code style={{ fontSize: font.sm }}>{entityId.slice(0, 8)}</code> isn't in this project. It may have been
+          deleted, or the link points at a different project's store.
+        </p>
+        <Button variant="primary" onClick={onDeleted}>
+          Close
+        </Button>
+      </div>
+    );
+  }
   const e = entity.data;
+
+  // Copy a shareable link straight to this document — the entity-header half of
+  // the copy-location affordance (the TopBar copies the current location).
+  const copyLink = () =>
+    copyText(entityLink(e.id)).then(
+      () => toast("Link to this document copied.", "success"),
+      () => toast("Couldn't copy the link."),
+    );
 
   // ancestors() is nearest-first; breadcrumbs read root-first.
   const path = [...(ancestors.data ?? [])].reverse();
@@ -228,18 +260,23 @@ export function DocumentView({
             </>
           )}
         </p>
-        <Button
-          variant="danger"
-          data-testid="delete-entity"
-          onClick={() => {
-            if (window.confirm(`Delete "${e.title}"? This also removes its links, suggestions, and revisions.`)) {
-              remove.mutate();
-            }
-          }}
-          disabled={remove.isPending}
-        >
-          Delete
-        </Button>
+        <div style={{ display: "flex", gap: space(2), alignItems: "center", flexShrink: 0 }}>
+          <Button variant="ghost" aria-label="Copy link" title="Copy link to this document" onClick={copyLink}>
+            🔗
+          </Button>
+          <Button
+            variant="danger"
+            data-testid="delete-entity"
+            onClick={() => {
+              if (window.confirm(`Delete "${e.title}"? This also removes its links, suggestions, and revisions.`)) {
+                remove.mutate();
+              }
+            }}
+            disabled={remove.isPending}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
       <h2 style={{ marginTop: space(1) }}>
         {titleDraft === null ? (

@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/client";
+import { copyText } from "../lib/clipboard";
+import { currentLink, goBack, useCanGoBack } from "../lib/route";
 import { ProjectSwitcher } from "./ProjectSwitcher";
-import { Button } from "./ui";
+import { Button, useToast } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 export type View = "documents" | "board" | "xray" | "pulse" | "settings";
@@ -60,6 +62,17 @@ export function TopBar({
       ? { state: "danger", label: "sidecar: unreachable — is it running?" }
       : { state: "ok", label: "sidecar: connected" };
 
+  const canGoBack = useCanGoBack();
+  const toast = useToast();
+
+  // Copy a shareable link to the current location: view + document + panel tab,
+  // encoded in the hash so pasting it into a fresh launch restores the place.
+  const copyLink = () =>
+    copyText(currentLink()).then(
+      () => toast("Link to this location copied.", "success"),
+      () => toast("Couldn't copy the link."),
+    );
+
   const provider: { state: "ok" | "warn" | "pending"; label: string } =
     health.isPending || health.isError
       ? { state: "pending", label: "model provider: checking…" }
@@ -83,6 +96,18 @@ export function TopBar({
         background: color.surface,
       }}
     >
+      {/* Browser-style back: steps through the in-app history the router
+          builds. Disabled at the first entry, where there's nowhere to go. */}
+      <Button
+        variant="ghost"
+        aria-label="Back"
+        title="Back"
+        disabled={!canGoBack}
+        onClick={goBack}
+        style={{ fontSize: font.lg, color: color.text, padding: `0 ${space(1)}px` }}
+      >
+        ‹
+      </Button>
       {/* The brand is the home affordance: it always returns to the Pulse. */}
       <Button
         variant="ghost"
@@ -160,6 +185,11 @@ export function TopBar({
           ⌘K
         </kbd>
       </button>
+      {/* Copy a link to wherever you are — the app's answer to a missing URL
+          bar. The location lives in the hash, so the copied link is resumable. */}
+      <Button aria-label="Copy link" title="Copy link to this location" variant="ghost" onClick={copyLink}>
+        🔗
+      </Button>
       {/* Settings sits beside the status dots: the dots say what's wrong, the
           gear is where you fix it. */}
       <Button

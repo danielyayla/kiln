@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ActivityEvent, ProjectPulse, WorkOrderHealth, WorkOrderStatus } from "@kiln/core";
 import { api } from "../lib/client";
+import { contextRoute, navigate } from "../lib/route";
 import { timeAgo } from "../lib/time";
 import { ProposalsCard } from "./ProposalQueue";
 import { Badge, SectionHeader } from "./ui";
@@ -227,13 +228,16 @@ function SeverityBadge({ level, count }: { level: "error" | "warn"; count: numbe
 
 // One active work order's pre-flight context health (Phase 8 checks, rolled up
 // by /pulse/knowledge). The tooltip carries the actual check messages.
-function KnowledgeRow({ wo, onSelect }: { wo: WorkOrderHealth; onSelect: (id: string) => void }) {
+// This panel's whole point is pre-flight context health, so a row is a one-hop
+// (WO#4) straight to the work order's Context tab — the tab the reader came to
+// check — rather than a plain open that would need a manual tab switch.
+function KnowledgeRow({ wo }: { wo: WorkOrderHealth }) {
   const problems = wo.checks.filter((c) => c.level !== "info");
   const tooltip = (problems.length > 0 ? problems : wo.checks).map((c) => `• ${c.message}`).join("\n");
   return (
     <button
       data-testid={`knowledge-${wo.id}`}
-      onClick={() => onSelect(wo.id)}
+      onClick={() => navigate(contextRoute(wo.id))}
       title={tooltip}
       style={{
         display: "flex",
@@ -694,7 +698,7 @@ export function PulseView({ onSelect }: { onSelect: (id: string) => void }) {
                 {knowledge.data.totals.warns} warning{knowledge.data.totals.warns === 1 ? "" : "s"}, worst first.
               </p>
               {knowledge.data.workOrders.map((wo) => (
-                <KnowledgeRow key={wo.id} wo={wo} onSelect={onSelect} />
+                <KnowledgeRow key={wo.id} wo={wo} />
               ))}
             </div>
           )}

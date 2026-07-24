@@ -11,9 +11,11 @@ import { Board } from "./components/Board";
 import { XRayView } from "./components/XRayView";
 import { PulseView } from "./components/PulseView";
 import { SettingsView } from "./components/SettingsView";
-import { TopBar, type View } from "./components/TopBar";
+import { TopBar } from "./components/TopBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { Button, Input, ToastProvider, useToast } from "./components/ui";
+import { navigate, routeAfterProjectSwitch, useRoute } from "./lib/route";
+import { resolveKey } from "./lib/keyboard";
 import { color, font, space } from "./theme";
 
 // First-run welcome (BP-6): a fresh store gets a create CTA instead of an
@@ -68,26 +70,50 @@ function ZeroState({ onCreated }: { onCreated: (id: string) => void }) {
 // knowledge-graph neighbourhood of the opened entity on the right. All state
 // lives in the store behind the sidecar — the webview only renders and links.
 export function App() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Pulse is home (Phase 11): the first second of a session answers "where
-  // were we, what's stuck, what's next?" instead of asking for a selection.
-  const [view, setView] = useState<View>("pulse");
+  // Location is the source of truth (BP: Navigation & deep linking). `view`,
+  // the opened document, and the right-panel tab all come from the URL hash,
+  // so the app is addressable and survives reload. Pulse is home (Phase 11):
+  // an empty hash resolves to it. `quickOpen` stays transient UI state.
+  const { view, selectedId, panelTab } = useRoute();
   const [quickOpen, setQuickOpen] = useState(false);
+
+  // Open a document: every navigator, dashboard, board, and search selection
+  // routes through here — the compatibility shim for the old `onSelect(id)`.
+  const openDoc = (id: string) => navigate({ view: "documents", selectedId: id });
+  const clearSelection = () => navigate({ selectedId: null });
 
   // Shares the navigator's cache entry; used only to detect a fresh store.
   const tree = useQuery({ queryKey: ["tree", "chain"], queryFn: () => api.tree("chain") });
   const isFreshStore = tree.data?.length === 0;
 
-  // ⌘K / Ctrl+K from anywhere (BP-6).
+  // Global keyboard (BP-6 ⌘K + WO#5 keyboard nav). One listener drives the
+  // palette toggle and the "g <key>" view-switch chord; `resolveKey` is the pure
+  // map (unit-tested), and view switches go through `navigate` so a shortcut and
+  // a TopBar click share one path. A dangling "g" expires after a short window.
   useEffect(() => {
+    let armed = false;
+    let disarm: ReturnType<typeof setTimeout> | undefined;
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      const el = e.target as HTMLElement | null;
+      const editable =
+        !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      const { action, armed: next } = resolveKey(e, armed, editable);
+      armed = next;
+      clearTimeout(disarm);
+      if (armed) disarm = setTimeout(() => (armed = false), 1500);
+      if (action.kind === "quickOpen") {
         e.preventDefault();
         setQuickOpen((v) => !v);
+      } else if (action.kind === "navigate") {
+        e.preventDefault();
+        navigate({ view: action.view });
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      clearTimeout(disarm);
+    };
   }, []);
 
   return (
@@ -96,24 +122,31 @@ export function App() {
         <UpdateBanner />
         <TopBar
           view={view}
-          onViewChange={setView}
+          onViewChange={(v) => navigate({ view: v })}
           onQuickOpen={() => setQuickOpen(true)}
-          // A project switch swapped the whole workspace: drop the selection
-          // and land on the new project's Pulse (the switcher already cleared
-          // the query cache).
-          onProjectSwitched={() => {
-            setSelectedId(null);
+          // A project switch swapped the whole workspace (the switcher already
+          // activated the new store and cleared the query cache). Keep the
+          // opened entity if it still exists in the new project; otherwise land
+          // on Pulse (Navigation & deep linking — no more hard reset).
+          onProjectSwitched={async () => {
             setQuickOpen(false);
-            setView("pulse");
+            let exists = false;
+            if (selectedId) {
+              try {
+                await api.getEntity(selectedId);
+                exists = true;
+              } catch {
+                exists = false;
+              }
+            }
+            const patch = routeAfterProjectSwitch(selectedId, exists);
+            if (patch) navigate(patch, { replace: true });
           }}
         />
         {quickOpen && (
           <QuickOpen
             onClose={() => setQuickOpen(false)}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setView("documents");
-            }}
+            onSelect={(id) => openDoc(id)}
           />
         )}
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -134,15 +167,12 @@ export function App() {
             >
               <FeatureTree
                 selectedId={selectedId}
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setView("documents");
-                }}
+                onSelect={(id) => openDoc(id)}
                 onDeleted={(id) => {
-                  if (selectedId === id) setSelectedId(null);
+                  if (selectedId === id) clearSelection();
                 }}
               />
-              <ArtifactsPanel selectedId={selectedId} onSelect={setSelectedId} />
+              <ArtifactsPanel selectedId={selectedId} onSelect={(id) => openDoc(id)} />
             </nav>
           )}
           <main
@@ -161,48 +191,23 @@ export function App() {
             }}
           >
             {view === "xray" ? (
-              <XRayView
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setView("documents");
-                }}
-              />
+              <XRayView onSelect={(id) => openDoc(id)} />
             ) : view === "settings" ? (
               <SettingsView />
             ) : view === "pulse" ? (
               // An empty dashboard is worse than an empty state: a fresh store
               // gets the create-first-requirement CTA here too.
               isFreshStore ? (
-                <ZeroState
-                  onCreated={(id) => {
-                    setSelectedId(id);
-                    setView("documents");
-                  }}
-                />
+                <ZeroState onCreated={(id) => openDoc(id)} />
               ) : (
-                <PulseView
-                  onSelect={(id) => {
-                    setSelectedId(id);
-                    setView("documents");
-                  }}
-                />
+                <PulseView onSelect={(id) => openDoc(id)} />
               )
             ) : view === "board" ? (
-              <Board
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  setView("documents");
-                }}
-              />
+              <Board onSelect={(id) => openDoc(id)} />
             ) : selectedId ? (
-              <DocumentView entityId={selectedId} onSelect={setSelectedId} onDeleted={() => setSelectedId(null)} />
+              <DocumentView entityId={selectedId} onSelect={(id) => openDoc(id)} onDeleted={() => clearSelection()} />
             ) : isFreshStore ? (
-              <ZeroState
-                onCreated={(id) => {
-                  setSelectedId(id);
-                  setView("documents");
-                }}
-              />
+              <ZeroState onCreated={(id) => openDoc(id)} />
             ) : (
               <p style={{ color: color.muted }}>
                 Select a requirement or artifact to open its document — or press ⌘K to search.
@@ -210,7 +215,14 @@ export function App() {
             )}
           </main>
           {view === "documents" && selectedId && (
-            <RightPanel entityId={selectedId} onSelect={setSelectedId} />
+            <RightPanel
+              entityId={selectedId}
+              onSelect={(id) => openDoc(id)}
+              tab={panelTab ?? "graph"}
+              // A tab switch is an in-place refinement, not a destination:
+              // replace so Back skips past it to the previous location.
+              onTabChange={(t) => navigate({ panelTab: t === "graph" ? null : t }, { replace: true })}
+            />
           )}
         </div>
       </div>

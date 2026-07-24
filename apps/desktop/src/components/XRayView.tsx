@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Background,
@@ -16,6 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { EntityType, LinkType, WorkOrderStatus } from "@kiln/core";
 import { api } from "../lib/client";
+import { contextRoute, navigate } from "../lib/route";
 import { boundingRect, COLUMN_WIDTH, layoutXRay } from "../lib/layout";
 import { traceLineage } from "../lib/lineage";
 import { summarizeXRayContext, type XRayContextSummary } from "../lib/xray-context";
@@ -385,6 +386,20 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
     setTraced(id);
     setPeek(id);
   };
+
+  // Esc dismisses the peek (WO#5 keyboard nav) — the one transient surface the
+  // canvas owns. Scoped to when a peek is open so Esc is inert otherwise.
+  useEffect(() => {
+    if (!traced) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setTraced(null);
+        setPeek(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [traced]);
   const lineage = useMemo(
     () => (traced && graph.data ? traceLineage(graph.data, traced) : null),
     [traced, graph.data],
@@ -585,7 +600,7 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
   // so lane bands and column headers are inherently excluded. fitBounds (a
   // plain viewport op) is used instead of fitView({nodes}) — the latter waits
   // on node-initialization state and proved unreliable here.
-  const frameContext = () => {
+  const fitThread = () => {
     if (!rf || !lineage) return;
     const rect = boundingRect(
       nodes
@@ -823,6 +838,7 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
             )}
             <button
               aria-label="Close document panel"
+              title="Close (Esc)"
               onClick={() => focusNode(null)}
               style={{
                 marginLeft: "auto",
@@ -883,8 +899,22 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
               Open in Documents
             </Button>
             {tracedNode.type === "work_order" && (
-              <Button variant="ghost" disabled={!rf || !lineage} onClick={frameContext}>
+              <Button
+                variant="ghost"
+                title="Open in Documents with the agent's assembled context already in view"
+                onClick={() => navigate(contextRoute(tracedNode.id))}
+              >
                 Frame context
+              </Button>
+            )}
+            {tracedNode.type === "work_order" && (
+              <Button
+                variant="ghost"
+                title="Fit the canvas to this work order's lineage thread"
+                disabled={!rf || !lineage}
+                onClick={fitThread}
+              >
+                Fit thread
               </Button>
             )}
           </div>
