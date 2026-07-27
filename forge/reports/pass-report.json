@@ -1,0 +1,57 @@
+{
+  "kindCounts": {
+    "decision": 132,
+    "intent": 28,
+    "receipt": 137,
+    "source": 99,
+    "task": 156
+  },
+  "relCounts": {
+    "cites": 298,
+    "depends_on": 100,
+    "fulfills": 149,
+    "governed_by": 538,
+    "governs": 132,
+    "part_of": 27,
+    "records": 137,
+    "version_of": 40
+  },
+  "aliases": 243,
+  "revisionsMigrated": 40,
+  "distillPending": 33,
+  "replay": {
+    "ok": 93,
+    "fail": 0
+  },
+  "checks": [
+    {
+      "name": "every non-degraded task fulfills an intent",
+      "violations": 0
+    },
+    {
+      "name": "every decision governs something",
+      "violations": 0
+    },
+    {
+      "name": "every receipt records a task",
+      "violations": 0
+    },
+    {
+      "name": "dangling edges",
+      "violations": 0
+    },
+    {
+      "name": "intents without part_of except root",
+      "violations": 0
+    }
+  ],
+  "flags": [
+    "degraded task archived: [cancelled] Implement bearer-token auth guard at the transport boundary",
+    "degraded task archived: [cancelled] Stand up the MCP server endpoint with handshake and routing",
+    "degraded task archived: [cancelled] Build the work-order query service for ready orders",
+    "degraded task archived: [cancelled] Build the context assembler joining intent and code artifacts",
+    "degraded task archived: [cancelled] Expose ready work orders and assembled context as MCP resources/tools",
+    "degraded task archived: [cancelled] Implement the status-transition state machine validator",
+    "degraded task archived: [cancelled] Wire the write path to validate and persist status transitions"
+  ]
+}

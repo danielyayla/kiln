@@ -1,0 +1,614 @@
+**176 provisional** across 19 feature(s): **166 clean**, **10 flagged**.
+
+# Ratification queue — distilled decisions (provisional)
+
+## X-ray — intent-to-execution map — 33 decision(s)
+- ✓ **[constraint] Feature is entirely webview work with no backend or schema changes** (governs 3 task(s))
+   - The X-ray context-at-a-glance is implemented entirely in the desktop webview, reusing existing api endpoints and the captured ReactFlowInstance, with no core, sidecar, schema, or graph-snapshot changes.
+   - evidence: "No core, sidecar, schema, or graph-snapshot changes."
+- ✓ **[design] Receipt comparison uses a stable JSON representation local to the webview** (governs 3 task(s))
+   - Context-vs-receipt equality is computed with a small deterministic stable JSON representation (recursively sorted object keys, array order preserved), and the webview must not import runtime core code or Node crypto.
+   - rejected: Importing runtime core code or Node crypto into the webview
+   - evidence: "use a small deterministic stable JSON representation that sorts object keys recursively while preserving array order. Do not import runtime core code or Node cr"
+- ✓ **[design] Handoff state is a three-way classification: never, current, changed** (governs 3 task(s))
+   - The handoff badge is defined deterministically: never when no receipts exist, current when the assembled context equals the newest receipt's context, and changed otherwise.
+   - evidence: "handoff state: never when there are no receipts, current when current context equals the newest receipt context, changed otherwise."
+- ✓ **[design] Query keys align with the Context Inspector, fetched only for work orders** (governs 3 task(s))
+   - Context, health, and receipts are fetched conditionally only when the selected node is a work order, using the same query keys as ContextInspector so caches are shared.
+   - evidence: "Keep query keys aligned with ContextInspector: ["context", id], ["context-health", id], and ["context-receipts", id]."
+- ✓ **[constraint] The glance card stays summary-density** (governs 3 task(s))
+   - The peek-panel card must not include full artifact bodies, duplicate the Context Inspector diff, or add new canvas labels; failures degrade to a quiet unavailable state that leaves the document usable.
+   - evidence: "Keep the card summary-density: no full artifact bodies, no duplicated Context Inspector diff, no new canvas labels."
+- ✓ **[design] Webview trace mirrors core's deterministic blueprint pick** (governs 2 task(s))
+   - The lineage trace adds each ancestor requirement's details blueprint by picking the blueprint node first by (title, id), deliberately matching the same deterministic pick core uses for LineageEntry.blueprint.
+   - evidence: "pick the blueprint node first by (title, id) using the snapshot's node titles (the same deterministic pick as core's LineageEntry.blueprint)"
+- ✓ **[constraint] Trace adds blueprints only for ancestors and does not expand further** (governs 2 task(s))
+   - The trace must not add a blueprint for the start node's own requirement (only ancestors) and must not expand the graph further from an added blueprint, keeping sibling features and sibling blueprints out.
+   - evidence: "Do NOT add blueprints for the start node's own requirement (only ancestors), and do not expand further from the added blueprint."
+- ✓ **[design] Product root and its architecture blueprint are exempt from gap rules** (governs 2 task(s))
+   - When a product root exists, graphGaps exempts the root from the requirement-without-blueprint rule and its details blueprints from the blueprint-without-work-order rule, so root context docs are not flagged as gaps.
+   - evidence: "exempt (a) the product root from the requirement-without-blueprint rule and (b) its details blueprints from the blueprint-without-work-order rule."
+- ✓ **[constraint] Both fixes are additive with no schema, sidecar, or payload change** (governs 2 task(s))
+   - The two fixes are small and independent (one webview, one core), change no schema, sidecar, or payload, and leave flat stores' output identical.
+   - evidence: "No schema, sidecar, or payload change."
+- ✓ **[design] X-ray tracing lights ancestor details blueprints using core lineage's exact rule** (governs 0 task(s))
+   - Tracing a node also lights each reached ancestor requirement's details blueprint, selected first by (title, id) — the same deterministic rule core's lineage uses — so the lit thread equals the assembled context.
+   - evidence: "also lights that ancestor's details blueprint, picked first by (title, id) — the exact rule core's lineage uses"
+- ✓ **[design] Gap analysis exempts the product root and its architecture blueprint** (governs 0 task(s))
+   - graphGaps stops flagging the product root's details blueprint as lacking an implementing work order, and the product root is never a missing-blueprint candidate, because an architecture overview is never implemented directly.
+   - evidence: "`graphGaps` no longer flags the product root's details blueprint as "blueprint with no implementing work order" (an architecture overview is never implemented d"
+- ✓ **[constraint] Flat stores must trace byte-identically to before** (governs 0 task(s))
+   - The tracing changes are constrained to stores with an ancestor tree; sibling blueprints and sibling features stay unlit and flat stores produce byte-identical trace results.
+   - evidence: "flat stores trace byte-identically to today"
+- ✓ **[scope] Remove the Sunburst view entirely rather than keeping it as a mode toggle** (governs 0 task(s))
+   - The sunburst companion view and its mode toggle are deleted outright (component, lib, tests, MapView wrapper) so the app has one map, the X-ray. Removal must leave no dangling references and the workspace must still build and pass tests.
+   - rejected: Keeping Sunburst as a second mode behind the X-ray | Sunburst toggle
+   - evidence: "the X-ray | Sunburst mode toggle and the `MapView` wrapper are gone; no dangling references anywhere in the app"
+- ✓ **[constraint] Record the Sunburst removal as a body note on the Phase 9 requirement, preserving history** (governs 0 task(s))
+   - Instead of deleting the Phase 9 requirement from the store, the removal is documented in its body so the knowledge graph's history is preserved.
+   - rejected: Deleting the Phase 9 requirement from the store
+   - evidence: "The Phase 9 requirement in the store gets a body note recording the removal (history preserved, not deleted)."
+- ✓ **[design] Rename the map view to "X-ray" with tab order Pulse | Documents | Board | X-ray** (governs 0 task(s))
+   - The view is renamed from Map to X-ray everywhere users see it: the TopBar tab, the directly-rendered XRayView, and loading/empty copy.
+   - evidence: "the TopBar tab reads "X-ray" (order: Pulse | Documents | Board | X-ray)"
+- ✓ **[constraint] Phase 12 is client-only: peek panel reuses GET /entities/:id, geometry from existing layoutXRay** (governs 0 task(s))
+   - The feature finder and document peek panel are built with zero core, sidecar, or schema changes; the panel fetches through the existing entity endpoint and all geometry derives from the existing layout output.
+   - evidence: "**No server change**: zero core/sidecar/schema changes; the panel fetches the entity through the existing `GET /entities/:id`"
+- ✓ **[design] Store.listLinks is the sole new Store method; the graph ships as one snapshot call** (governs 10 task(s))
+   - The only new SQL is a plain SELECT behind Store.listLinks (keeping SQL inside the store impl per the core rule); a pure graphSnapshot builds nodes and edges, and the webview loads the entire map from a single GET /graph call.
+   - evidence: "add `Store.listLinks(): Link[]` (the only new SQL — a plain SELECT in SqliteStore; SQL stays inside the store impl per the core rule)"
+- ✓ **[design] Use @xyflow/react for the canvas, but positions come from a pure layoutXRay function, not a physics sim** (governs 10 task(s))
+   - React Flow handles pan/zoom, rendering, and interaction, while node positions are computed by our own pure layout function (columns by entity-type stage) so layout stays deterministic and testable. The new dependency is Vite-bundled since the CSP/self-contained rule applies only to Artifacts.
+   - rejected: A physics-simulation layout
+   - evidence: "Layout is our own pure function, not a physics sim, so it stays deterministic and testable."
+- ✓ **[design] Swimlane assignment: each node's lane is its nearest root-requirement ancestor** (governs 10 task(s))
+   - Feature lanes are derived by walking child_of to the nearest root-requirement ancestor, with blueprints, work orders, and artifacts inheriting their requirement's lane; cross-lane edges are drawn but de-emphasized.
+   - evidence: "Assign each node to a lane = its nearest root-requirement ancestor (walk child_of; a blueprint/work-order/artifact inherits the lane of its requirement)."
+- ✓ **[design] Lineage trace is a client-side, unit-tested pure BFS over the snapshot** (governs 10 task(s))
+   - Clicking a node traces lineage by BFS over the snapshot's typed edges in both directions and dims non-members; the traversal is a pure function so it can be unit-tested without a server.
+   - evidence: "The traversal is a pure function `traceLineage(snapshot, id)`, unit-tested."
+- ✓ **[constraint] X-ray is additive only: no schema, edge-type, or transition changes; existing views untouched** (governs 10 task(s))
+   - The feature must not change the store schema, edge types, or status transitions, and must leave existing views alone; Store.listLinks is the only Store-interface addition.
+   - evidence: "Additive only: no store schema, edge-type, or transition change; existing views untouched. `Store.listLinks` is the sole new Store method."
+- ✓ **[constraint] X-ray styling uses design tokens only, supporting light and dark** (governs 10 task(s))
+   - No raw hex colors outside index.css; entity and status colors come from the existing palette, in both light and dark themes.
+   - evidence: "Token-styled: no raw hex outside index.css; light + dark; entity/status colors from the existing palette."
+- ✓ **[scope] Deferred: sunburst companion, time-scrubber replay, and server-side level-of-detail** (governs 10 task(s))
+   - Three ideas are explicitly pushed to a later phase: the radial sunburst companion view, a time-scrubber that replays graph growth, and server-side level-of-detail for very large graphs.
+   - evidence: "Out of scope (a later phase): the radial sunburst companion; a time-scrubber that replays how the graph filled up; server-side level-of-detail for very large gr"
+- ✓ **[constraint] X-ray handoff-state comparison is read-only: viewing never records a context receipt** (governs 0 task(s))
+   - Handoff state in the X-ray peek panel is computed deterministically against the newest existing context receipt; viewing the X-ray must never record a receipt, preserving receipts as delivery-only audit records.
+   - evidence: "Comparison is deterministic and uses the newest existing context receipt; viewing the X-ray never records a receipt."
+- ✓ **[design] Inherited context names its ancestor requirement without adding synthetic graph edges** (governs 0 task(s))
+   - The 'Context at a glance' section distinguishes direct from inherited artifacts and identifies the ancestor requirement an inherited artifact came from, without materializing synthetic edges in the graph.
+   - evidence: "Inherited context identifies the ancestor requirement it came from without adding synthetic graph edges."
+- ✓ **[scope] Phase 13 is webview-only: no core, sidecar, schema, or graph-mode changes** (governs 0 task(s))
+   - The feature is built entirely from existing context and health responses; no changes to core, sidecar, schema, graph snapshot, overlays, or graph modes are permitted.
+   - evidence: "No core, sidecar, schema, graph snapshot, new overlay, or new graph mode changes."
+- ✓ **[constraint] Context loading failure must not block basic peek-panel behavior** (governs 0 task(s))
+   - The context section is additive: if context loading or the request fails, the panel's existing title, body, close, and Open in Documents behavior must keep working.
+   - evidence: "Context loading or request failure does not block the existing title, body, close, or Open in Documents behavior."
+- ✓ **[constraint] BP-12 is webview-only work reusing the existing layout and entity routes** (governs 3 task(s))
+   - All X-ray focus work happens in the apps/desktop webview with zero core, sidecar, or schema changes; the graph snapshot, layoutXRay output, and GET /entities/:id cover every need.
+   - evidence: "Entirely `apps/desktop` webview work: zero core/sidecar/schema changes."
+- ✓ **[design] Sunburst view is removed and Map is renamed to X-ray** (governs 3 task(s))
+   - The Sunburst view and MapView are deleted along with their lib and tests; XRayView renders directly in their place and the tab is renamed X-ray.
+   - evidence: "Delete `src/components/SunburstView.tsx`, `src/components/MapView.tsx`, `src/lib/sunburst.ts`, `src/lib/sunburst.test.ts`."
+- ✓ **[design] Single click traces and peeks together; double-click still navigates** (governs 3 task(s))
+   - Clicking a node sets both the trace and the peek panel to that node, clicking again (or the pane, or the panel close) clears both, while double-click keeps navigating via onSelect.
+   - evidence: "clicking a node sets `traced` and `peek` to that id; clicking the same node clears both; `onPaneClick` clears both; the panel ✕ clears both. Double-click keeps "
+- ✓ **[design] Dogfood note recorded as a commitBody document edit, not a schema change** (governs 3 task(s))
+   - The 'Removed in Phase 12' note is appended to the Phase 9 requirement's body via the sidecar's commitBody-backed document edit, preserving history and explicitly avoiding any schema change.
+   - evidence: "append a short "Removed in Phase 12" note to the Phase 9 requirement's body in the store via the sidecar (commitBody-backed document edit — NOT a schema change;"
+- ✓ **[design] Feature finder zooms via fitBounds on the precomputed lane rectangle, staying pure-view** (governs 3 task(s))
+   - Zoom-to-lane reuses the lane-band rectangle already computed by layoutXRay and calls fitBounds on the React Flow instance; no new lib functions are needed, and any extracted helper must go in src/lib/layout.ts with a unit test.
+   - evidence: "Keep it pure-view: no new lib functions needed beyond reusing the layout output; if a helper is extracted it goes in `src/lib/layout.ts` with a unit test."
+- ✓ **[constraint] Exactly three sequenced work orders, each verified live in the running app** (governs 3 task(s))
+   - The work is cut into exactly three serialized work orders (removal/rename, peek panel, finder), each verified live in the running app in addition to green tests, typecheck, and build.
+   - evidence: "Cut exactly 3 work orders, sequenced (same file, serialize):"
+
+## Context assembly & inheritance — one call gathers a work order's full context — 20 decision(s)
+- ✓ **[design] Single product-root requirement holds the Product Overview; its details blueprint is the System Architecture Overview** (governs 0 task(s))
+   - Root context is modeled as one root requirement whose body is the Product Overview (including explicit non-goals and constraints) and whose details blueprint is the System Architecture Overview, so all existing feature requirements become its children.
+   - evidence: "A single root requirement (the product node) exists whose body is the Product Overview: vision, target users, problems solved, core capabilities, differentiator"
+- ✓ **[design] System diagram is text-based Mermaid** (governs 0 task(s))
+   - The architecture document's system diagram must be text-based (Mermaid) specifically so it survives diffing, review, and export.
+   - evidence: "a text-based (Mermaid) system diagram that survives diffing, review, and export"
+- ✓ **[constraint] Stores without a product node produce byte-identical output** (governs 0 task(s))
+   - Backward compatibility is required: context assembly on a store with no product node must produce output byte-identical to the pre-change behavior.
+   - evidence: "a store with no product node produces byte-identical output to today."
+- ✓ **[design] Lineage entries carry the ancestor's details blueprint, as an additive-only change** (governs 0 task(s))
+   - The architecture doc reaches every work order by extending lineage entries to include each ancestor's details blueprint, exposed through get_work_order and rendered in refine/review prompts, with the change kept strictly additive.
+   - evidence: "Lineage entries additionally carry the ancestor's `details` blueprint when one exists, so the architecture doc reaches every work order the same way inherited a"
+- ⚠ **[constraint] No new entity types, link types, tables, or state transitions** (governs 0 task(s))
+   - Root context is delivered entirely with the existing schema and graph model; the phase forbids introducing new entity types, link types, tables, or transitions.
+   - evidence: "No new entity types, link types, tables, or transitions."
+   - ⚠ ≈ overlaps provisional "Additive only: no new entity types, link types, tables, or t"
+- ✓ **[design] The product node is never a feature row; it gets its own X-ray lane** (governs 0 task(s))
+   - Feature-level views treat the product node's children as the feature set (when the single-root convention holds); the product node itself is excluded from feature rows and occupies its own lane on the X-ray, and overall completion equals its rollup.
+   - evidence: "The product node is never a feature row; on the X-ray it occupies its own lane."
+- ✓ **[design] Root-context health checks: missing root is info, degraded root is warning** (governs 0 task(s))
+   - contextHealth gains deterministic root-context checks with fixed severities — absence of a root lineage entry reports as info, while a root with an empty body or no details blueprint reports as a warning.
+   - evidence: "a work-order context whose lineage carries no root entry reports an info-level absence; a root entry with an empty body or no details blueprint reports a warnin"
+- ✓ **[design] Context assembly is deterministic and model-free** (governs 0 task(s))
+   - assembleWorkOrderContext gathers the work order, its blueprint, requirement, artifacts, and lineage purely deterministically with no model involvement.
+   - evidence: "gathers, deterministically and model-free"
+- ✓ **[design] Nearest-wins dedup for inherited artifacts** (governs 0 task(s))
+   - When an artifact is referenced at multiple lineage levels, it appears only at the level closest to the work order.
+   - evidence: "nearest-wins dedup: an artifact appears only at the level closest to the work order"
+- ✓ **[design] Product root identified by convention: the unique parentless requirement with requirement children** (governs 0 task(s))
+   - The product root is detected structurally rather than flagged: it is the unique parentless requirement that has requirement children, and its overview body and architecture blueprint reach every nested work order through lineage.
+   - evidence: "the unique parentless requirement with requirement children is the product root"
+- ✓ **[constraint] Flat stores degrade gracefully to byte-identical output** (governs 0 task(s))
+   - Stores with no child_of edges produce an empty lineage and byte-identical context output, preserving backward compatibility.
+   - evidence: "Flat stores (no `child_of`) degrade gracefully: `lineage: []`, byte-identical output."
+- ✓ **[design] Receipts deduped by SHA-256 of a stable-stringified context** (governs 0 task(s))
+   - hashContext computes a SHA-256 over a sorted-key stable stringify, and recordContextReceipt inserts a new receipt only when the hash differs from the latest, deduplicating identical handoffs.
+   - evidence: "`hashContext` — SHA-256 of a stable-stringify (sorted keys); `recordContextReceipt` inserts only when the hash differs from the latest (dedupe)."
+- ✓ **[design] Receipts are frozen snapshots that cascade-delete with their work order** (governs 0 task(s))
+   - Context receipts are stored as frozen snapshots in the context_receipts table and are cascade-deleted when their work order is deleted.
+   - evidence: "Receipts are frozen snapshots in `context_receipts`, cascade-deleted with their work order."
+- ✓ **[design] The product root is a convention, not a schema marker** (governs 6 task(s))
+   - The graph's top is defined by shape alone: a store has a product root exactly when it has one parentless requirement with requirement children. No schema flag marks it, so any other shape (including flat stores) behaves exactly as before.
+   - rejected: Marking the product root in the schema
+   - evidence: "The product root is a CONVENTION, not a schema marker: it is the unique root requirement — a store has a product root exactly when it contains exactly one paren"
+- ✓ **[constraint] Additive only: no new entity types, link types, tables, or transitions** (governs 6 task(s))
+   - The root-context feature must be delivered without introducing new entity types, link types, tables, or status transitions.
+   - evidence: "Additive only: no new entity types, link types, tables, or transitions."
+- ✓ **[design] Ambiguous multi-blueprint ancestors resolve deterministically by (title, id)** (governs 6 task(s))
+   - Each lineage entry gains an optional blueprint — the ancestor's details blueprint — and when an ancestor has several, the first by (title, id) is chosen for determinism.
+   - evidence: "if an ancestor has several, take the first by (title, id) for determinism"
+- ✓ **[constraint] Root-context health checks are pure and deterministic** (governs 6 task(s))
+   - The new health checks (empty lineage info, empty root body warning, missing architecture blueprint warning) operate only on the assembled context with no store access and no model calls.
+   - evidence: "Pure, no store access, no model calls."
+- ✓ **[design] The webview duplicates the ~5-line root rule instead of importing runtime core** (governs 6 task(s))
+   - assignLanes applies the product-root convention locally on the snapshot by duplicating the small rule with its own tests, following the Phase 13 stable-stringify precedent, rather than importing runtime core into the webview.
+   - rejected: Importing runtime core code into the webview
+   - evidence: "duplicate the ~5-line rule with tests rather than importing runtime core, matching the Phase 13 stable-stringify precedent"
+- ✓ **[design] Migration is store surgery through existing endpoints, not repo code** (governs 6 task(s))
+   - Creating the product root and re-parenting existing roots is done through existing link machinery and endpoints; no migration code is committed to the repository.
+   - rejected: Writing migration code in the repo
+   - evidence: "No migration code in the repo: store surgery through existing endpoints."
+- ✓ **[constraint] Data authoring and migration come last — ordering is load-bearing** (governs 6 task(s))
+   - The authoring/migration step runs only after the core convention and desktop flow-through are live, because the sequencing itself is load-bearing; the drafting agent takes the first pass at the Product Overview from the existing tree as a demo of the thesis.
+   - evidence: "Authoring + migration + docs (data last — ordering is load-bearing)"
+
+## Context Inspector — audit and diff what an agent handoff contains — 20 decision(s)
+- ✓ **[constraint] Redesign is webview-only with zero core/sidecar/schema change** (governs 3 task(s))
+   - The Context Inspector redesign lives entirely in apps/desktop; every data need is served by existing endpoints and existing check codes, so no core, sidecar, or schema change is allowed.
+   - evidence: "Entirely `apps/desktop` (webview). Zero core/sidecar/schema change"
+- ✓ **[design] Receipts tab uses a newest-first timeline instead of From/To dropdowns** (governs 3 task(s))
+   - Receipt comparison is driven by a timeline of event rows (relative time, short hash, changed/same marker) with a pinned 'Current context (now)' entry, replacing the previous From/To dropdown pickers.
+   - rejected: From/To dropdown selectors for choosing receipts
+   - evidence: "Timeline replaces the From/To dropdowns."
+- ✓ **[design] Default diff on open is latest receipt vs current context** (governs 3 task(s))
+   - Opening the Receipts tab defaults to diffing the latest receipt against the current context — the exact question raised by the Phase 13 'Changed since latest handoff' glance chip; clicking one event diffs against current, a second selection compares the pair.
+   - evidence: "The default on open is latest receipt -> current - exactly the question the Phase 13 glance chip ("Changed since latest handoff") raises."
+- ✓ **[design] Health-check-to-document targeting is mapped client-side from check codes** (governs 3 task(s))
+   - Actionable checks are made clickable by mapping existing HealthCheck.code values to target documents purely client-side (e.g. missing-blueprint to its section, oversized to the largest doc); unmapped codes keep the plain-text rendering.
+   - evidence: "Map `HealthCheck.code` -> target doc client-side"
+- ⚠ **[constraint] New pure logic lives in src/lib with vitest coverage; components stay thin** (governs 3 task(s))
+   - Check-to-target mapping, section drift computation, and share math are implemented as pure functions in src/lib with vitest tests, keeping components thin.
+   - evidence: "All new pure logic (check->target mapping, section drift computation, share math) lives in `src/lib/` with vitest coverage; components stay thin."
+   - ⚠ ≈ duplicates ratified "All new pure logic (check->target mapping, section drift com" (100%)
+- ⚠ **[constraint] Design tokens only; reuse existing UI primitives and helpers** (governs 3 task(s))
+   - Styling must use tokens (no raw hex or ad-hoc font sizes) and reuse the existing ui/ primitives, diff classes, and time helpers.
+   - evidence: "Tokens only (no raw hex / ad-hoc font sizes); reuse `ui/` primitives"
+   - ⚠ ≈ duplicates ratified "Tokens only (no raw hex / ad-hoc font sizes); reuse `ui/` pr" (86%)
+- ✓ **[design] Redesign the Context Inspector around two user questions instead of a show-everything debug view** (governs 0 task(s))
+   - The inspector is reframed around pre-flight (is this work order safe to hand off?) and forensic (what did the agent see, what drifted?) questions, leading with a single verdict rather than a checklist of colored dots the user must interpret.
+   - rejected: The Phase 8 debugging-tool presentation that shows everything and asks the user to do the interpretation
+   - evidence: "I want a single verdict ("ready to hand off" vs "needs attention") before any detail, so I don't have to interpret a checklist of colored dots."
+- ✓ **[design] Receipts view defaults to "latest handoff vs now" with a timeline instead of timestamp dropdowns** (governs 0 task(s))
+   - The forensic view defaults to comparing the latest handoff against the current state (the question the Phase 13 glance chip raises) and presents handoff history as a readable timeline.
+   - rejected: Two timestamp dropdowns for selecting comparison points
+   - evidence: "I want the receipts view to default to "latest handoff vs now" (the question the Phase 13 glance chip raises), and I want handoff history as a readable timeline"
+- ✓ **[design] Per-section drift summary shown before the raw line diff** (governs 0 task(s))
+   - Drift is summarized per context section (e.g. blueprint changed, artifact added, requirement unchanged) ahead of the red/green line diff, so most investigations can end without reading raw diff lines.
+   - evidence: "I want a per-section drift summary ("Blueprint changed - artifact added - requirement unchanged") before the raw line diff"
+- ✓ **[constraint] No new health checks; contextHealth codes/messages are the contract the UI maps from** (governs 0 task(s))
+   - The redesign adds no health checks and does not touch contextHealth; the UI only maps from its existing codes and messages.
+   - evidence: "No new health checks and no changes to `contextHealth` (its codes/messages are the contract the UI maps from)."
+- ✓ **[constraint] Phase 17 is entirely apps/desktop — no core, sidecar, or schema changes** (governs 0 task(s))
+   - The whole redesign is confined to the desktop app layer with no changes of any kind to core, sidecar, or schema.
+   - evidence: "No core, sidecar, or schema changes of any kind - this is entirely `apps/desktop`."
+- ✓ **[constraint] Viewing a context is still not a handoff — receipt recording rules unchanged** (governs 0 task(s))
+   - The redesign does not change when context receipts are recorded; only actual handoffs record receipts, not inspector viewing.
+   - evidence: "No changes to when receipts are recorded (viewing is still not a handoff)."
+- ✓ **[scope] No model-based drift analysis** (governs 0 task(s))
+   - Model-based drift analysis remains out of scope, carried over from the Phase 8 out-of-scope list.
+   - evidence: "No model-based drift analysis (stays on the Phase 8 out-of-scope list)."
+- ✓ **[design] One new primitive — the context receipt captured at delivery; everything else is pure analysis** (governs 10 task(s))
+   - The inspector adds a single new primitive, a provenance record (context receipt) captured at delivery time; all other functionality is pure analysis over the already-assembled context plus read routes and UI.
+   - evidence: "The one new primitive is a provenance record — a context receipt — captured at delivery; everything else is pure analysis over the already-assembled context plu"
+- ✓ **[design] Receipts dedupe by content hash: insert only when the hash differs from the latest** (governs 10 task(s))
+   - recordContextReceipt hashes a deterministic JSON serialization of the assembled context and inserts a new receipt only if the hash differs from the latest receipt for that work order, so identical re-handoffs do not duplicate records.
+   - evidence: "insert ONLY if the hash differs from the latest receipt for that work order (dedupe identical re-handoffs)"
+- ✓ **[constraint] context_receipts is the sole schema addition; existing tables untouched** (governs 10 task(s))
+   - The only persistence change is the new context_receipts table with its Store methods; no existing table is modified.
+   - evidence: "This is the sole schema addition; existing tables are untouched."
+- ✓ **[design] Context health checks are deterministic and pure, with no model call** (governs 10 task(s))
+   - contextHealth runs deterministic structural checks (missing links, empty or oversized artifacts, low signal, ungrounded identifiers) with token size estimated as chars/4, and never calls a model.
+   - evidence: "Health checks are deterministic and pure (no model call)."
+- ✓ **[design] get_work_order is the capture point: delivery records a receipt, payload unchanged** (governs 10 task(s))
+   - The MCP get_work_order tool records a receipt when it delivers context because that is the honest handoff point; recording provenance on a read is intentional as an audit log, and the returned payload is unchanged.
+   - evidence: "get_work_order records a receipt via recordContextReceipt when it delivers context — the honest handoff point."
+- ✓ **[constraint] Sidecar read routes never create receipts — viewing is not a handoff** (governs 10 task(s))
+   - The desktop's context, health, and receipts routes are strictly read-only; only an MCP delivery records provenance, because viewing in the UI is not a handoff.
+   - evidence: "These read routes never create receipts — viewing is not a handoff."
+- ⚠ **[scope] Out of scope: bug entity, git/PR linkage, model-based drift check, real token counting** (governs 10 task(s))
+   - The MVP is work-order-keyed and defers a first-class bug/finding entity, git/PR commit-to-work-order linkage for automatic bug trace-back, a model-based drift check reusing the review agent, and token counting beyond chars/4.
+   - evidence: "Out of scope (future): a first-class bug/finding entity and git/PR commit<->work-order linkage for automatic bug trace-back (MVP is work-order-keyed); a model-b"
+   - ⚠ ≈ overlaps provisional "No model-based drift analysis"
+
+## Pulse — project health dashboard — 18 decision(s)
+- ✓ **[design] Pulse is the home view; app launches into it and the brand link returns to it** (governs 0 task(s))
+   - The app opens on the Pulse dashboard with a fixed TopBar tab order (Pulse | Documents | Board | Map) and the Kiln brand click navigating to Pulse, so the first second of a session answers what needs attention without clicking.
+   - evidence: "the app launches into Pulse; the TopBar tab order is Pulse | Documents | Board | Map; clicking the "Kiln" brand navigates to Pulse"
+- ✓ **[constraint] A fresh store shows the create-first-requirement ZeroState, not an empty dashboard** (governs 0 task(s))
+   - When the store has no entities, the app still shows the onboarding ZeroState instead of an empty Pulse dashboard, preserving the existing creation flow into Documents.
+   - rejected: Showing an empty dashboard on a fresh store
+   - evidence: "a store with no entities still shows the create-first-requirement ZeroState (not an empty dashboard)"
+- ✓ **[design] The Pulse 'next' list reuses the exact readiness rule agents see** (governs 0 task(s))
+   - The dashboard's Now/Next 'next' list is defined as exactly the honest agent list — status ready with no unfinished depends_on — the same rule as list_ready_work_orders, so the human and agent views never disagree.
+   - evidence: "`next` is exactly the honest agent list (status ready AND no unfinished depends_on — the same rule as list_ready_work_orders)"
+- ✓ **[constraint] Needs-attention band is composed from existing pulse queries, not new endpoints** (governs 0 task(s))
+   - The needs-attention band is assembled client-side from the three existing pulse queries rather than adding any new endpoints.
+   - rejected: Adding new endpoints for the needs-attention band
+   - evidence: "No new endpoints — composed from the three existing pulse queries."
+- ✓ **[constraint] Pulse rendering is pure, token-styled, and never calls a model or writes** (governs 0 task(s))
+   - Every number on the dashboard must remain a pure function of the store, styling uses design tokens only, and rendering never invokes a model and never performs writes.
+   - evidence: "Tokens only; every number remains a pure function of the store; rendering never calls a model and never writes."
+- ✓ **[design] Pulse follows the established three-layer additive architecture** (governs 6 task(s))
+   - Pulse is built as pure unit-tested core functions over the Store interface, exposed through thin read-only sidecar routes, rendered by a webview that only renders and navigates — with no schema, Store-interface, or link-type changes.
+   - evidence: "pure, unit-tested core functions over the `Store` interface → thin read-only sidecar routes → a webview view that only renders and navigates. Additive only: no "
+- ✓ **[constraint] Reuse existing graph helpers instead of duplicating them** (governs 6 task(s))
+   - projectPulse reuses criticalPath and blockingDependencies from graph/ and mirrors the snapshot.ts descendant-rollup semantics rather than reimplementing them.
+   - rejected: Duplicating critical-path/blocking/rollup logic inside pulse
+   - evidence: "Reuse, don't duplicate: `criticalPath` and `blockingDependencies` from `graph/`, the descendant-work-order rollup logic mirrors `snapshot.ts`"
+- ✓ **[constraint] Deterministic ordering everywhere: sort by title then id** (governs 6 task(s))
+   - All pulse outputs are deterministically ordered, sorting by title then id (worst-first with the same tie-break for knowledge health, newest-first with kind/entityId tie-break for activity).
+   - evidence: "Deterministic ordering everywhere (sort by title then id)."
+- ✓ **[design] Activity timeline merges already-recorded events; no new tables** (governs 6 task(s))
+   - The activity feed is derived by merging three event sources Kiln already records (entity createdAt, revisions, context receipts) instead of adding an events table.
+   - rejected: Recording activity in new tables
+   - evidence: "Merge three event sources Kiln already records — NO new tables"
+- ✓ **[design] Per-entity iteration is acceptable at Kiln scale to keep the Store interface fixed** (governs 6 task(s))
+   - The timeline iterates entities and calls existing per-entity list methods, accepting the O(n) cost at Kiln's scale as the price of leaving the Store interface unchanged.
+   - rejected: Extending the Store interface with a bulk activity query
+   - evidence: "Iterating entities and calling the existing per-entity list methods is acceptable at Kiln scale and keeps the Store interface unchanged"
+- ✓ **[constraint] Viewing pulse data never records context receipts** (governs 6 task(s))
+   - The pulse sidecar routes are read-only and must never record context receipts, because viewing a dashboard is not an agent handoff.
+   - evidence: "Viewing is not a handoff: these routes NEVER record context receipts."
+- ✓ **[constraint] Knowledge health is purely structural — no model calls** (governs 6 task(s))
+   - knowledgeHealth rolls up assembleWorkOrderContext + contextHealth for active work orders using structural checks only, never invoking a model.
+   - evidence: "Purely structural — no model call."
+- ✓ **[constraint] UI work orders require live verification in the running app** (governs 6 task(s))
+   - Work is cut into ~6 layer-at-a-time work orders, and every UI work order must be verified live in the running app, not only via tests.
+   - evidence: "Each UI work order must be verified LIVE in the running app, not only by tests."
+- ✓ **[constraint] Pulse-as-home is a minimal additive amendment: one new payload field, no new endpoints or schema change** (governs 3 task(s))
+   - The amendment keeps BP-10's layering (pure core, thin read-only sidecar, render-only webview) and constrains itself to a single new field on the pulse payload with zero new endpoints and zero schema/Store-interface changes.
+   - evidence: "One new payload field, zero new endpoints, zero schema/Store-interface change."
+- ✓ **[constraint] now.next reuses readyWorkOrders — the same rule agents see via list_ready_work_orders** (governs 3 task(s))
+   - The "next up" list is computed by reusing the existing readiness helper (ready AND unblocked) rather than re-deriving the rule, so the dashboard shows the same honest list agents may pull over MCP.
+   - rejected: Re-deriving the readiness rule inside pulse
+   - evidence: "Reuse `readyWorkOrders` from `graph/readiness.ts` and the existing `toRef`/`byTitleThenId` helpers — do not re-derive the readiness rule."
+- ✓ **[design] Pulse becomes the app's home view, with the brand text as a home button** (governs 3 task(s))
+   - The initial view state changes to pulse, tab order becomes Pulse | Documents | Board | Map, and clicking the "Kiln" brand navigates home. A fresh (empty) store renders the existing ZeroState instead of PulseView.
+   - evidence: "`App.tsx`: initial view state becomes `"pulse"`."
+- ✓ **[design] The needs-attention band composes from already-fetched queries with no new fetches** (governs 3 task(s))
+   - The band under the KPI strip is assembled purely from data the dashboard already loads (blocked WOs, context warnings, structural gaps), rendered only when it has items, otherwise a quiet all-clear line.
+   - rejected: Adding new fetches for the attention band
+   - evidence: "Compose from ALREADY-FETCHED queries (no new fetches)"
+- ✓ **[constraint] All Phase-10 Pulse behaviors are preserved through the redesign** (governs 3 task(s))
+   - The dashboard redesign must keep existing query keys, pulse invalidation, click-through contracts, empty states, and data-testids, only adding new test ids for the new sections.
+   - evidence: "Preserve ALL Phase-10 behaviors: query keys, `["pulse"]` invalidation, click-through contracts, empty states, data-testids (keep existing ids; add `needs-attent"
+
+## Agent-assisted authoring — draft, refine, and review documents with AI — 14 decision(s)
+- ✓ **[constraint] Match Software Factory's valuable capabilities while remaining local-first and open-source** (governs 0 task(s))
+   - The phase's goal is to close gaps identified against Software Factory, but only within the constraint that Kiln stays local-first and open-source.
+   - evidence: "Kiln matches the parts of Software Factory that matter while staying local-first and open-source"
+- ✓ **[constraint] The phase must be dogfooded end-to-end through Kiln's own MCP handoff** (governs 0 task(s))
+   - Every work order in the phase must be executed by a coding agent over MCP using context assembled by Kiln, with friction recorded as findings, as a phase-level acceptance condition.
+   - evidence: "every work order is picked up by a coding agent   over MCP with context assembled by Kiln, and friction is recorded as findings."
+- ✓ **[constraint] The one rule: agents never write documents directly — everything lands as a human-resolved Suggestion** (governs 1 task(s))
+   - Every authoring agent output becomes a Suggestion (with a source tag per agent) that a human resolves op-by-op through applySuggestion; pending suggestions anchor-lock the body.
+   - evidence: "Agents never write documents directly. Every agent output lands as a `Suggestion` (sources: `draft_agent`, `extraction_agent`, `refine_agent`, `review_agent`) t"
+- ✓ **[design] AnthropicModelProvider checks credentials itself to keep availability signals honest** (governs 1 task(s))
+   - Because the Anthropic SDK no longer throws when constructed without credentials, the provider constructor checks apiKey/authToken itself so the sidecar's 503 and /health.providerAvailable remain truthful.
+   - evidence: "the constructor checks `client.apiKey`/`authToken` itself because the SDK no longer throws without credentials"
+- ✓ **[design] Refine uses toolChoice auto to emit at most one suggestion; forced stays the default for draft/extract** (governs 1 task(s))
+   - The refine chat turn may emit prose and/or exactly one suggestion via the shared EMIT_SUGGESTION_TOOL with provider toolChoice "auto", while forced tool choice remains the default so draft and extract are unaffected.
+   - evidence: "provider `toolChoice: "auto"`; forced remains the default so draft/extract are untouched"
+- ✓ **[constraint] The sidecar owns the model key so it never reaches the webview** (governs 1 task(s))
+   - Model-facing routes live on the sidecar (503 provider-unavailable, 502 authoring-failed) specifically so the API key never crosses into the webview.
+   - evidence: "the sidecar owns the model key so it never reaches the webview"
+- ✓ **[design] Agent tests use scripted providers; a single live smoke test skips without an API key** (governs 1 task(s))
+   - Agent behavior is tested against scripted model providers, with one live smoke test that self-skips when ANTHROPIC_API_KEY is absent.
+   - evidence: "Tests use scripted providers; one live smoke test skips without `ANTHROPIC_API_KEY`."
+- ✓ **[constraint] All data access goes through the Store interface; no SQL outside store/db packages** (governs 0 task(s))
+   - Every component must access persistence through the Store interface, with SQL confined to packages/core/src/store and src/db.
+   - evidence: "Everything through the `Store` interface; no SQL outside packages/core/src/store|db."
+- ✓ **[constraint] Zod validation at every boundary** (governs 0 task(s))
+   - All external boundaries — MCP tools, sidecar routes, CLI arguments — validate input with Zod.
+   - evidence: "Zod validation at every boundary (MCP tools, sidecar routes, CLI args)."
+- ✓ **[constraint] Agents never overwrite documents: suggestion ops with per-op accept/reject** (governs 0 task(s))
+   - AI agents may only propose structured suggestion operations that a human accepts or rejects per-op, producing a revision; new agents (refine, review) must reuse this same pipeline rather than writing documents directly.
+   - rejected: Agents directly overwriting documents
+   - evidence: "Agents never overwrite documents: structured suggestion ops -> per-op accept/reject -> revision. New agents (refine, review) must reuse this pipeline."
+- ✓ **[constraint] All model calls via ModelProvider; scripted providers in tests, at most one live smoke test** (governs 0 task(s))
+   - Model access is abstracted behind ModelProvider; tests use scripted providers, and at most one live smoke test is allowed, which skips when ANTHROPIC_API_KEY is absent.
+   - evidence: "All model calls via `ModelProvider`; tests use scripted providers; at most one live smoke test that skips without ANTHROPIC_API_KEY."
+- ✓ **[constraint] Desktop UI uses design tokens and shared primitives only** (governs 0 task(s))
+   - The desktop UI must draw styling from index.css/theme.ts tokens (no raw hex or fontSize values) and build on primitives from src/components/ui, with TanStack Query invalidation of the tree and ancestors keys on renames.
+   - evidence: "Desktop UI: tokens from index.css/theme.ts only (no raw hex/fontSize); primitives from src/components/ui"
+- ✓ **[constraint] BP-3 transitions remain the single source of status legality** (governs 0 task(s))
+   - Status-transition legality is defined once in core/src/transitions.ts; no other layer may define its own transition rules.
+   - evidence: "BP-3 transitions stay the single source of status legality (core/src/transitions.ts)."
+- ✓ **[design] Node 22 with node:sqlite behind the experimental flag** (governs 0 task(s))
+   - The stack targets Node 22 using the built-in node:sqlite module, which requires --experimental-sqlite (set by the test runner).
+   - evidence: "Node 22: node:sqlite behind --experimental-sqlite (test runner sets it)."
+
+## Kiln — 9 decision(s)
+- ✓ **[design] Persistence via built-in node:sqlite, isolated so the driver is swappable in one file** (governs 0 task(s))
+   - The store uses Node's built-in SQLite (loaded lazily in db/connect.ts) for zero-dependency persistence, deliberately confined so swapping the driver touches a single file.
+   - evidence: "zero-dependency persistence via `node:sqlite`, swappable in one file"
+- ✓ **[constraint] Zod validation at every boundary because model and network are untrusted** (governs 0 task(s))
+   - API routes, MCP schemas, and agent tool emissions are all Zod-validated on the grounds that both the model and the network are untrusted inputs.
+   - evidence: "Zod at every boundary (API routes, MCP schemas, agent tool emissions) — the model and the network are both untrusted inputs."
+- ✓ **[constraint] The webview is a pure client: it never touches the DB or the model key** (governs 0 task(s))
+   - The Hono sidecar owns the model key and all store access; the React webview talks only to the sidecar through a typed client.
+   - evidence: "the webview never touches the DB or the model key"
+- ⚠ **[constraint] No SQL or driver imports outside the core store/db directories** (governs 0 task(s))
+   - All database access goes through the Store interface; SQL and driver imports are confined to packages/core/src/store and packages/core/src/db.
+   - evidence: "No SQL or driver imports outside `packages/core/src/store` and `packages/core/src/db`; everything goes through `Store`."
+   - ⚠ ≈ duplicates ratified "No SQL or driver imports outside `packages/core/src/store` a" (89%)
+- ⚠ **[constraint] Schema evolves additively and shared rules live once in core** (governs 0 task(s))
+   - The schema only grows additively, and cross-cutting rules (transitions, readiness, root convention) are defined once in core with every surface consuming them.
+   - evidence: "Schema evolves additively; shared rules live once in core (transitions, readiness, root convention) and every surface consumes them."
+   - ⚠ ≈ duplicates ratified "Schema evolves additively; shared rules live once in core (t" (94%)
+- ⚠ **[constraint] Derived views are pure, deterministic functions; viewing never records a receipt** (governs 0 task(s))
+   - All derived views are pure functions of the store — unit-tested, deterministic, with no model calls — and merely viewing a context never records a receipt.
+   - evidence: "Derived views are pure functions of the store — deterministic, unit-tested, no model calls; viewing never records a receipt."
+   - ⚠ ≈ duplicates ratified "Derived views are pure functions of the store" (100%)
+- ⚠ **[constraint] Agent output enters the store only as human-gated suggestions, with anchor lock** (governs 0 task(s))
+   - Agents cannot write the store directly; their output lands as suggestions or candidates a human resolves, and the anchor lock forbids stacking a second pending suggestion.
+   - evidence: "Agent output enters the store only as suggestions/candidates gated by a human; anchor lock forbids stacking a second pending suggestion."
+   - ⚠ ≈ duplicates ratified "Agent output enters the store only as suggestions/candidates" (100%)
+- ⚠ **[constraint] Webview: tokens only (grep-enforced) and no runtime imports from core** (governs 0 task(s))
+   - All raw colors and typography live in index.css/theme.ts, enforced by grep, and the webview must not import core at runtime — small pure rules are duplicated with their own tests instead.
+   - rejected: Importing core into the webview at runtime to share rules
+   - evidence: "Webview: tokens only (all raw colors/type in index.css/theme.ts, grep-enforced); no runtime-core imports (duplicate small pure rules with tests instead)."
+   - ⚠ ≈ duplicates ratified "Webview: tokens only (all raw colors/type in index.css/theme" (89%)
+- ⚠ **[design] The product root is a convention, not a schema marker** (governs 0 task(s))
+   - The product root is identified by convention (the unique parentless requirement with requirement children or a details blueprint) rather than a schema flag, so flat stores keep working unchanged.
+   - rejected: A schema-level marker for the product root
+   - evidence: "The product root is a convention, not a schema marker: the unique parentless requirement with requirement children or a `details` blueprint (the seeded design d"
+   - ⚠ ≈ duplicates ratified "The product root is a convention, not a schema marker: the u" (78%)
+
+## Agent handoff over MCP — serve ready, unblocked work orders to coding agents — 8 decision(s)
+- ✓ **[design] Streamable-HTTP MCP server with bearer auth, pinned to SDK 1.29.0 behavior** (governs 6 task(s))
+   - The bridge is a streamable-HTTP MCP server with bearer-token auth (KILN_MCP_TOKEN) built on @modelcontextprotocol/sdk, verified against 1.29.0, where tools with an outputSchema must return structuredContent on success.
+   - evidence: "streamable-HTTP MCP server with bearer auth (`KILN_MCP_TOKEN`), built on `@modelcontextprotocol/sdk` (verified against 1.29.0; with `outputSchema`, success resu"
+- ✓ **[design] Readiness: offered only when ready with all depends_on done; cycles block every member** (governs 6 task(s))
+   - A work order is served to agents only when its status is ready and every depends_on target is done; dependency cycles leave all members blocked with no traversal into the loop.
+   - evidence: "a work order is offered only when ready AND all `depends_on` targets are done; cycles leave all members blocked (no traversal into the loop)."
+- ✓ **[design] Delivery records a content-hashed context receipt; viewing in the UI never does** (governs 6 task(s))
+   - get_work_order records a context receipt because a delivery is a handoff and must leave an audit record, while UI viewing never records one.
+   - evidence: "records a content-hashed context receipt: a delivery is a handoff, so it leaves an audit record (viewing in the UI never does)."
+- ✓ **[constraint] Completion report is required on in_progress → done over MCP, atomic with the transition** (governs 6 task(s))
+   - Closing a work order over MCP requires a completion report, and the receipt write commits atomically with the status transition. Optional reports were rejected because they converge on never-filled, and a separate record_completion tool was rejected because agents forget a second call.
+   - rejected: An optional report field (optional execution records converge on never-filled) and a separate record_completion tool (a two-call close means agents forget the second call)
+   - evidence: "**Required on `in_progress → done` over MCP, atomic with the transition.** The receipt write and the status change commit together or not at all."
+- ✓ **[design] Completion reports are MCP-only; human closes stay report-free** (governs 6 task(s))
+   - Only the MCP channel requires a completion report — a human moving a card to done in the app or CLI is not an agent handoff — matching the asymmetry context receipts already encode. Cancellation reasons are explicitly deferred.
+   - evidence: "A human moving a card to done in the app or CLI is not an agent handoff and stays report-free — the same asymmetry context receipts already encode"
+- ✓ **[design] Completion receipts are testimony, not enforcement — never verified against a repo** (governs 6 task(s))
+   - Commits, branch, and files touched are stored as the agent gave them and never verified against a repository, since Kiln has no repo access; code-side verification is a later feature. A GitHub-webhook-first capture was rejected as new infrastructure before the record proves its value that also misses the completion moment.
+   - rejected: GitHub-webhook-first capture: new infrastructure before the record proves its value, and it misses the completion moment the MCP channel already carries
+   - evidence: "Commits and files are recorded as given, never verified against a repository — Kiln has no repo access and gains none here."
+- ✓ **[design] A separate completion_receipts table rather than widening context_receipts** (governs 6 task(s))
+   - Completion receipts get their own append-only table and Store methods as an additive migration; widening context_receipts was rejected because the records point in opposite directions with different shapes, and a union table would smear both semantics.
+   - rejected: Widening `context_receipts` into a union table: opposite direction, different shape; it smears the semantics of both
+   - evidence: "*Rejected — widening `context_receipts`:* opposite direction, different shape; a union table smears the semantics of both."
+- ✓ **[constraint] Docs and the execution skill change in lockstep with the tool's input schema** (governs 6 task(s))
+   - docs/CONNECTING.md and skills/kiln-execute/SKILL.md must be updated in lockstep with the MCP tool's input schema, and output schema and structuredContent must always change together.
+   - evidence: "`docs/CONNECTING.md` and `skills/kiln-execute/SKILL.md` change in lockstep with the tool's input schema."
+
+## See feature completion at a glance as a radial sunburst — 7 decision(s)
+- ✓ **[design] Sunburst is a mode of the existing Map view reusing the /graph snapshot** (governs 6 task(s))
+   - The sunburst is built as a radial companion mode alongside the X-ray in the same Map view, reusing the existing /graph snapshot; the only new logic is a pure layout plus an SVG renderer.
+   - evidence: "A radial companion to the X-ray, as a mode of the same Map view. Reuses the existing /graph snapshot; the only new logic is a pure layout plus an SVG renderer."
+- ✓ **[design] Angular span by subtree weight with a minimum; radius by depth** (governs 6 task(s))
+   - Wedge angular span is proportional to subtree weight (descendant work-order or leaf count) with a minimum span so tiny features stay visible, and radius maps to depth.
+   - evidence: "Angular span is proportional to a subtree   weight (descendant work-order or leaf count) with a minimum so tiny features stay   visible; radius by depth."
+- ✓ **[constraint] Layout is pure and deterministic, not a physics simulation** (governs 6 task(s))
+   - The sunburst layout is a deterministic pure function (ordered by the snapshot's node order, cycle-guarded), explicitly rejecting a physics-simulation approach.
+   - rejected: A physics simulation layout
+   - evidence: "The   layout is pure and deterministic (not a physics simulation)."
+- ✓ **[constraint] X-ray remains the default Map mode and is untouched** (governs 6 task(s))
+   - The mode toggle adds Sunburst alongside X-ray, but X-ray stays the default and is left unchanged.
+   - evidence: "X-ray stays the default and is untouched."
+- ✓ **[constraint] Strictly additive: no schema, core, or sidecar change** (governs 6 task(s))
+   - The feature is additive-only — it reuses the existing /graph endpoint and changes no schema, core, or sidecar code, leaving every other view unchanged; styling is token-only for light and dark.
+   - evidence: "Additive: reuses the existing /graph; no schema, core, or sidecar change; the X-ray   and every other view are unchanged."
+- ✓ **[scope] Out of scope: color interpolation, zoom-to-subtree, and a radial link-web** (governs 6 task(s))
+   - Continuous color interpolation, zoom-to-subtree focus, and a separate radial link-web are explicitly deferred; this view is the feature-completion map, not a graph web.
+   - evidence: "Out of scope (future): continuous color interpolation, zoom-to-subtree focus, and a   separate radial link-web (this is the feature-completion map, not a graph "
+- ✓ **[scope] Outer work-order ring is a separate, skippable work order** (governs 6 task(s))
+   - The outermost work-order status ring is cut as its own work order and may be skipped if the core view grows too large.
+   - evidence: "Cut as its own work order; skip if the core view swells."
+
+## Navigation & deep linking — addressable views so any entity, tab, or graph state is a shareable, resumable location — 7 decision(s)
+- ✓ **[design] URL hash is the single source of truth for app location** (governs 5 task(s))
+   - The useState view enum in App.tsx is replaced by state encoded in the URL hash, chosen because hash routing works inside the Tauri webview without a server; existing onSelect(id) call-sites keep working by routing through the new layer.
+   - rejected: Keeping view state in component useState
+   - evidence: "Replace the `useState` view enum in `App.tsx` with a single source of truth encoded in the URL hash (works inside the Tauri webview without a server)."
+- ✓ **[design] Routes encode exactly three axes: view, selectedId, and panel tab** (governs 5 task(s))
+   - The route shape captures the three axes of location that already exist in component state — the view, the selected entity id, and the right-panel tab — plus optional view params.
+   - evidence: "Encode the three axes of location that already exist in component state: `view` (pulse|documents|board|xray|settings), `selectedId`, and the right-panel tab."
+- ✓ **[constraint] Unknown or stale ids show an in-view not-found, never a blank app** (governs 5 task(s))
+   - Deep links to ids that no longer resolve must render a clean not-found state within the view instead of blanking the app.
+   - rejected: Rendering a blank app for stale ids
+   - evidence: "Unknown/stale ids resolve to a clean not-found within the view rather than a blank app."
+- ✓ **[design] History pushes per navigation, with replace semantics for in-place refinements** (governs 5 task(s))
+   - Each navigation pushes a history entry, but in-place refinements such as tab switches use replace semantics so back/forward stays meaningful.
+   - evidence: "with `replace` semantics for in-place refinements like tab switches"
+- ✓ **[design] Project switches preserve location when the entity exists in the new project** (governs 5 task(s))
+   - Switching projects patches the current location instead of hard-resetting to Pulse, falling back to Pulse cleanly only when the entity does not exist in the new project.
+   - rejected: Hard-resetting to Pulse on every project switch
+   - evidence: "Make project switches preserve/patch location instead of hard-resetting to Pulse when the entity still exists in the new project (else fall back to Pulse cleanl"
+- ✓ **[constraint] All navigation, including keyboard shortcuts, funnels through one navigate path** (governs 5 task(s))
+   - Keyboard shortcuts and clicks must share a single navigation path by routing everything through the navigate helper.
+   - evidence: "Route all through `navigate` so shortcuts and clicks share one path."
+- ✓ **[design] Incremental migration: land the router with parity first** (governs 5 task(s))
+   - The migration is kept incremental — the router lands first with no behavior change, then history, deep links, cross-view jumps, and keyboard support layer on as separate work orders.
+   - evidence: "land the router with parity first (no behavior change), then layer history, deep links, cross-view jumps, and keyboard on top as separate work orders."
+
+## Context inheritance up the requirement tree — 5 decision(s)
+- ✓ **[design] Lineage is a structured per-ancestor array, not a flattened artifact list** (governs 4 task(s))
+   - WorkOrderContext gains lineage as an array of { requirement, artifacts } entries ordered nearest-ancestor-first, chosen over a flattened list so consumers can show where inherited intent came from.
+   - rejected: A flattened list of inherited artifacts
+   - evidence: "Prefer `lineage: { requirement: Entity; artifacts: Entity[] }[]` (nearest ancestor first) over a flattened list, so consumers can show WHERE inherited intent ca"
+- ✓ **[design] Artifact dedup across lineage levels is nearest-wins** (governs 4 task(s))
+   - When the same artifact is referenced at multiple tree levels, the occurrence nearest the work order wins and farther ancestors drop it; the work order's own artifacts count as level 0 so ancestors never repeat them.
+   - evidence: "an artifact id already seen nearer the work order is dropped from farther ancestors (nearest wins)"
+- ✓ **[constraint] Top-level artifacts field stays unchanged for back-compat** (governs 4 task(s))
+   - The existing top-level artifacts field (the work order's own requirement's references) is kept unchanged so existing consumers are not broken by the new lineage field.
+   - evidence: "Keep the existing top-level `artifacts` (the work order's own requirement's references) unchanged for back-compat"
+- ✓ **[constraint] Flat stores must produce byte-for-byte identical output** (governs 4 task(s))
+   - Inheritance is wired in additively: a store with no child_of edges yields an empty lineage and output identical to before, covered explicitly by tests.
+   - evidence: "additively, so a flat store is byte-for-byte unchanged"
+- ✓ **[constraint] Additive only: no model, edge-type, or schema changes** (governs 4 task(s))
+   - The feature must not touch the suggestion/anchor/revision model, introduce new edge types, require schema migrations, or alter status transitions.
+   - evidence: "Additive only: no change to the suggestion/anchor/revision model, no new edge types, no schema/migration, transitions untouched"
+
+## Board — work orders in status columns — 5 decision(s)
+- ✓ **[constraint] Legal transitions live once in core; the board never derives its own** (governs 3 task(s))
+   - Status changes render only from GET /entities/:id/transitions; the legal-transition table is defined once in core/src/transitions.ts and shared by the MCP bridge and sidecar PATCH.
+   - rejected: The board deriving its own transition rules
+   - evidence: "the legal-transition table lives once in `core/src/transitions.ts`, shared by the MCP bridge and sidecar PATCH; the board never derives its own"
+- ✓ **[design] Five status columns sized to all fit at 1100px** (governs 3 task(s))
+   - The board renders five status columns (draft through done, cancelled) using flex: 1 1 0 with minWidth: 0 so all five fit at an 1100px window width.
+   - evidence: "five status columns (draft → ready → in progress → done, cancelled), `flex: 1 1 0` + `minWidth: 0` so all five fit at 1100px"
+- ✓ **[design] Readiness is fetched once in bulk under a shared query key** (governs 3 task(s))
+   - Readiness comes from a single bulk GET /work-orders/readiness fetch under the ["readiness"] query key, invalidated on status change and delete, rather than per-card fetches.
+   - evidence: "One bulk `GET /work-orders/readiness` fetch (query key `["readiness"]`, invalidated on status change/delete)"
+- ✓ **[design] Blocked badge is a shared component — one source of truth with the Context Inspector** (governs 3 task(s))
+   - Ready-but-blocked cards use the shared ui/BlockedBadge so the board and the Context Inspector present blocking identically from one component.
+   - evidence: "Ready-but-blocked cards get the shared `ui/BlockedBadge` (one source of truth with the Context Inspector)"
+- ✓ **[constraint] Board mutations invalidate tree, readiness, and pulse caches** (governs 3 task(s))
+   - Every board mutation invalidates the ["tree"], ["readiness"], and ["pulse"] query keys so the navigator and dashboard stay consistent with the board.
+   - evidence: "Every board mutation invalidates `["tree"]`, `["readiness"]`, and `["pulse"]` so the navigator and dashboard stay fresh"
+
+## Document editor & suggestions — edit documents and resolve agent-proposed changes — 5 decision(s)
+- ✓ **[design] One diff visual language: suggestion decorations, revision diffs, and receipt drift diffs share classes** (governs 4 task(s))
+   - Inline inserts and deletes use the same .kiln-ins/.kiln-del classes across suggestions, revision diffs, and receipt drift diffs so a "proposed change" looks identical everywhere.
+   - evidence: "the same classes style revision diffs and receipt drift diffs, so "proposed change" looks identical everywhere"
+- ✓ **[design] Per-op decisions are staged in the UI and resolved by a single Apply through applySuggestion** (governs 4 task(s))
+   - Accept/reject choices per op are staged client-side, then one Apply resolves the whole suggestion through applySuggestion, which consumes it on success (with optimistic UI removal).
+   - evidence: "Per-op accept/reject decisions are staged in the UI; one Apply resolves them through `applySuggestion`, which consumes the suggestion on success"
+- ✓ **[constraint] Anchor lock: pending suggestions block body edits and stacking a second suggestion** (governs 4 task(s))
+   - Because suggestions are anchored to the current body, updateEntity refuses body changes while suggestions are pending (ConstraintError), and filing a second suggestion on top of a pending one is refused with a 400.
+   - evidence: "`updateEntity` refuses body changes while suggestions are pending (`ConstraintError`) — resolve or dismiss first"
+- ✓ **[constraint] commitBody is the only path that writes a revision; every body commit must go through it** (governs 4 task(s))
+   - Revisions are written only by commitBody (atomically with the body) — plain updateEntity records nothing — so all body-committing surfaces, including the editor's Save and the sidecar's body-bearing PATCH, must route through commitBody. A PATCH whose body equals the current body is a no-op with no revision.
+   - evidence: "`commitBody` is the ONLY path that writes a revision (atomically with the body); plain `updateEntity` records nothing"
+- ✓ **[constraint] The anchor lock applies to manual Save; only suggestion-apply and restore are exempt** (governs 4 task(s))
+   - A body PATCH with pending suggestions is refused just like any other body write; the only writes exempt from the anchor lock are applying a suggestion and restoring a revision (which appends exactly one revision via commitBody).
+   - evidence: "a body PATCH with suggestions pending is refused — only suggestion-apply and restore are exempt"
+
+## Navigator — product-aware sidebar tree of the graph — 5 decision(s)
+- ✓ **[design] Sidebar learns the product-root convention client-side from /tree data** (governs 2 task(s))
+   - BP-15 is webview-only with zero core, sidecar, or schema change; the sidebar detects the Phase 14 product-root convention client-side from the /tree data it already has, following the same duplicate-the-rule precedent as assignLanes.
+   - evidence: "Webview-only; zero core/sidecar/schema change. The sidebar learns the Phase 14 product-root convention client-side from the /tree data it already has (single ro"
+- ✓ **[design] treeProgress counts null status as draft and excludes cancelled from the total** (governs 2 task(s))
+   - The treeProgress helper computes done/total recursively over a feature subtree, treating null status as draft and excluding cancelled work orders from the total.
+   - evidence: "recursive; null status counts as draft; cancelled excluded from total"
+- ✓ **[design] StatusDot centralizes status color/label maps; Board imports them** (governs 2 task(s))
+   - A shared ui/StatusDot component owns the STATUS_COLOR/STATUS_LABEL maps, and Board imports them instead of redefining its own, making one source of truth while leaving Board's pill rendering unchanged.
+   - rejected: Board keeping its own duplicate status color/label definitions
+   - evidence: "Board imports the maps from here instead of redefining them (one source of truth); its pill rendering is unchanged."
+- ✓ **[design] Product-root detection mirrors core's productRoot() rule** (governs 2 task(s))
+   - The client detects the product root when the tree has a single root with non-empty children or a details blueprint, mirroring core's productRoot() rule so a fresh project's seeded root never renders under FEATURES.
+   - evidence: "Detect the product root (tree.length === 1 && (children non-empty || the root carries a `details` blueprint) — mirroring core's `productRoot()` rule since the c"
+- ✓ **[scope] Product row menu offers Rename and New feature but no Delete** (governs 2 task(s))
+   - The product row's menu deliberately excludes Delete, which remains available only in the document view; creation entry points link new features child_of the product root when one exists.
+   - rejected: A Delete action on the product row menu
+   - evidence: "The product row menu offers Rename and New feature (no Delete — that stays in the document view)."
+
+## Conversational document refinement — 4 decision(s)
+- ✓ **[design] Refine agent is multi-turn and reuses the drafting suggestion-op schema** (governs 2 task(s))
+   - The refine agent is multi-turn with the document body plus assembled context in its system prompt, and its edit proposals reuse the same Zod op schema as drafting rather than a new format; tiering follows draft/extract.
+   - evidence: "new `refine` agent — multi-turn; system prompt carries the document   body + assembled context (reuse graph helpers); model may reply with prose, with   suggest"
+- ✓ **[design] Chat transcripts are session-local, not persisted in the store** (governs 2 task(s))
+   - No schema change is made for chat: transcripts live only in the session, with persistence explicitly deferred unless dogfooding demands it.
+   - rejected: Persisting chat transcripts in the store
+   - evidence: "Chat transcripts are   session-local (NOT persisted in the store for this WO; revisit if dogfooding demands)."
+- ✓ **[constraint] Core schema unchanged; suggestions/revisions reused as-is** (governs 2 task(s))
+   - The chat feature introduces no core schema change — existing suggestions and revisions mechanisms are used unchanged.
+   - evidence: "packages/core: no schema change — suggestions/revisions as-is."
+- ✓ **[design] Chat route mirrors /draft error semantics and respects the anchor lock** (governs 2 task(s))
+   - The sidecar chat endpoint keeps 503/502 semantics identical to /draft, and when ops target a document with pending suggestions the resulting ConstraintError is surfaced as actionable copy rather than bypassed.
+   - evidence: "503/502 semantics identical to /draft. Anchor lock applies: if ops target a doc with   pending suggestions, surface the ConstraintError as actionable copy."
+
+## Auto-update — installed desktop app keeps itself current — 4 decision(s)
+- ✓ **[design] Auto-update via Tauri v2's official updater plugin and GitHub Releases** (governs 1 task(s))
+   - The app uses tauri-plugin-updater with a GitHub Releases latest.json endpoint: on start the JS side checks for an update, prompts the user, downloads and installs, then relaunches via the process plugin.
+   - evidence: "Use Tauri v2's official updater plugin."
+- ✓ **[constraint] Signing key split: private key in CI secrets only, public key committed** (governs 1 task(s))
+   - Update signing uses a keypair from 'tauri signer generate'; the private key and password live exclusively in CI secrets (TAURI_SIGNING_PRIVATE_KEY) and never in the repo, while the public key is committed in tauri.conf.json.
+   - evidence: "private key + password live in CI secrets (TAURI_SIGNING_PRIVATE_KEY), never in the repo; pubkey is committed in tauri.conf.json."
+- ✓ **[design] Release pipeline: tauri-action publishes signed artifacts and latest.json on tag push** (governs 1 task(s))
+   - Releases are cut by a GitHub Actions workflow using tauri-action that builds, signs, and publishes artifacts plus latest.json to GitHub Releases whenever a tag is pushed.
+   - evidence: "GitHub Actions using tauri-action builds, signs, and publishes artifacts plus latest.json to GitHub Releases on tag push."
+- ✓ **[scope] Store schema migrations are out of scope for the updater** (governs 1 task(s))
+   - Store schema migrations are explicitly excluded as a separate concern, while being acknowledged as a prerequisite for shipping updates broadly.
+   - evidence: "Out of scope: store schema migrations (separate concern, prerequisite for shipping updates broadly)."
+
+## Markdown export — the whole knowledge graph as plain markdown files — 3 decision(s)
+- ✓ **[design] Export is a pure core function; all filesystem work lives in the CLI** (governs 1 task(s))
+   - exportGraph is a pure function in core returning {relativePath, contents} records with no fs access; the CLI command `kiln export` performs the only filesystem writes.
+   - evidence: "pure `exportGraph(store): ExportFile[]` ({relativePath, contents}) —   no fs in core"
+- ✓ **[design] Orphan entities are exported under unfiled/ so nothing is dropped** (governs 1 task(s))
+   - Entities outside the feature tree are still exported, placed under an unfiled/ directory, so the export never silently loses content.
+   - rejected: Silently dropping orphan entities from the export
+   - evidence: "listEntities for orphans (exported under   unfiled/ so nothing is silently dropped)"
+- ✓ **[design] Deterministic file naming: lowercase dashed slugs with 8-char id suffix and stable sort** (governs 1 task(s))
+   - File slugs are lowercase with dashes plus an 8-character id suffix, and output ordering is a stable sort by (type, title, id), making the export deterministic.
+   - evidence: "Slugs: lowercase, dashes, 8-char id suffix; stable sort by (type, title, id)."
+
+## Dependency-aware readiness — 3 decision(s)
+- ✓ **[design] Readiness is defined in core as status ready with no unfinished dependencies** (governs 3 task(s))
+   - packages/core owns the readiness rule: readyWorkOrders(store) returns work orders whose status is ready and that have no unfinished depends_on targets (blockingDependencies).
+   - evidence: "`readyWorkOrders(store)` = status ready AND no blockers"
+- ✓ **[design] Dependency cycles block both sides defensively and are surfaced, never looped** (governs 3 task(s))
+   - Cycle handling is defensive: a dependency cycle blocks both participating work orders, is surfaced in the result, and the computation must never infinite-loop.
+   - evidence: "defensive: a cycle blocks both, surfaced in the result, never infinite-loops"
+- ✓ **[constraint] MCP delegates readiness to core and updates outputSchema with structuredContent together** (governs 3 task(s))
+   - list_ready_work_orders delegates to core's readyWorkOrders rather than reimplementing filtering, and get_work_order's new dependencies field is added to the outputSchema and structuredContent in the same change, per the known SDK gotcha.
+   - rejected: Reimplementing readiness filtering inside the MCP server
+   - evidence: "outputSchema + structuredContent updated together — see CLAUDE.md gotcha"
+
+## Document review agent — 3 decision(s)
+- ✓ **[design] Review agent output is a Zod-validated findings structure with four finding kinds** (governs 1 task(s))
+   - The review agent takes an entity body plus assembled context and must emit Zod-validated findings ({severity, kind, note, quote}) with kind limited to ambiguity, gap, conflict, or duplication, plus an optional suggestion of edit ops. Each finding kind gets scripted-provider tests.
+   - evidence: "Zod-validated { findings: [{severity, kind: ambiguity|gap|conflict|duplication, note, quote}], suggestion?: ops[] }"
+- ✓ **[design] CLI review prints findings by default; filing the suggestion is opt-in via --suggest** (governs 1 task(s))
+   - kiln review only reports findings unless the user passes --suggest, which additionally files the fix suggestion.
+   - evidence: "`kiln review <entityId>` prints findings; `--suggest` also files the suggestion."
+- ✓ **[constraint] Core anchor lock refuses review suggestions while others are pending; UI surfaces it as guidance** (governs 1 task(s))
+   - Filing a review suggestion on top of pending suggestions is refused by core with ConstraintError, and the UI presents this as "resolve pending suggestions first" rather than bypassing the lock.
+   - evidence: "filing review suggestions while others are pending is refused by core (ConstraintError) — surface as "resolve pending suggestions first""
+
+## Coding-agent execution skill — 3 decision(s)
+- ✓ **[design] Skill procedure: only unblocked ready work, immediate in_progress, done only after verification** (governs 2 task(s))
+   - The execution skill instructs agents to pick up only unblocked ready work orders, keep scope to the WO body, claim in_progress immediately, mark done only after verification, and never skip transitions since the server enforces BP-3 legality.
+   - evidence: "pick up ONLY unblocked ready work orders; read full context; keep scope to the WO body; status discipline (in_progress immediately, done only after verification"
+- ✓ **[constraint] Ambiguous work orders: stop and ask rather than improvise** (governs 2 task(s))
+   - The skill's failure-path guidance requires agents to stop and ask on ambiguous work orders instead of improvising, and to handle degraded partial context from assembleWorkOrderContext.
+   - rejected: Improvising through ambiguity
+   - evidence: "ambiguous WOs (stop and ask, do not improvise)"
+- ✓ **[scope] The skill is documentation-only: no server or core code changes** (governs 2 task(s))
+   - Delivering the execution skill involves authoring SKILL.md and a CONNECTING.md install section only, with no changes to server or core code.
+   - evidence: "No code changes to server or core."

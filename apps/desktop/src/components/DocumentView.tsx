@@ -5,6 +5,7 @@ import type { Criticality } from "@kiln/core";
 import { api, ApiError } from "../lib/client";
 import { copyText } from "../lib/clipboard";
 import { CRITICALITIES, effectiveCriticality } from "../lib/criticality";
+import { draftDisabledReason } from "../lib/draft-gate";
 import { friendlyError } from "../lib/errors";
 import { entityLink } from "../lib/route";
 import { Editor } from "./Editor";
@@ -206,6 +207,14 @@ export function DocumentView({
   // ancestors() is nearest-first; breadcrumbs read root-first.
   const path = [...(ancestors.data ?? [])].reverse();
 
+  // Same draft gate as before — the reason only explains it (the button used
+  // to disable silently): an in-flight draft vs the pending-suggestions
+  // anchor lock read differently on hover.
+  const draftBlocked = draftDisabledReason({
+    drafting: draft.isPending,
+    pendingSuggestions: suggestions.data?.length ?? 0,
+  });
+
   return (
     <article data-testid="document-view">
       <ProposalWalkBanner entityId={entityId} onSelect={onSelect} />
@@ -367,7 +376,8 @@ export function DocumentView({
           <Button
             data-testid="draft-with-agent"
             onClick={() => draft.mutate()}
-            disabled={draft.isPending || (suggestions.data?.length ?? 0) > 0}
+            disabled={draftBlocked !== null}
+            title={draftBlocked ?? undefined}
           >
             {draft.isPending ? "drafting…" : "Draft with agent"}
           </Button>

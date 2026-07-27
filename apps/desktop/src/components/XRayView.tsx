@@ -779,12 +779,15 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
                     fill = % of work done
                   </span>
                   <LegendRow dot={color.accent} label="depends on" dashed />
-                  <span style={{ marginTop: space(1) }}>
-                    Click a card to trace + read it; double-click to open it.
-                  </span>
                 </div>
               </>
             )}
+            {/* The click model stays visible even with the panel collapsed —
+                it is the one thing a first-time user must learn (single-click
+                = trace + peek, double-click = open). */}
+            <div style={{ marginTop: space(1.5) }}>
+              Click a card to trace + read it; double-click to open it.
+            </div>
           </div>
         </Panel>
       </ReactFlow>
@@ -917,6 +920,9 @@ export function XRayView({ onSelect }: { onSelect: (id: string) => void }) {
                 Fit thread
               </Button>
             )}
+            <span style={{ alignSelf: "center", fontSize: font.xs, color: color.faint }}>
+              Tip: double-click a node to open it in Documents.
+            </span>
           </div>
         </div>
       )}
