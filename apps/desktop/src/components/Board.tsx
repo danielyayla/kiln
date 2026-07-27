@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Entity, WorkOrderStatus } from "@kiln/core";
 import { api, type WorkOrderReadiness } from "../lib/client";
+import { boardViewState } from "../lib/board-state";
 import { effectiveWorkType, filterByWorkType, WORK_TYPES, type WorkTypeFilter } from "../lib/work-type";
 import {
   CRITICALITIES,
@@ -342,7 +343,6 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
 
   // One bulk readiness fetch for the whole board; cards join by id (WO-B2).
   const readiness = useQuery({ queryKey: ["readiness"], queryFn: () => api.readiness() });
-  const readinessById = new Map((readiness.data ?? []).map((r) => [r.id, r]));
 
   // Type filter (BP-18): one filter over every column, by EFFECTIVE type —
   // `feature` therefore includes unset cards. Session-local, never persisted.
@@ -350,6 +350,19 @@ export function Board({ onSelect }: { onSelect: (id: string) => void }) {
   // Criticality filter (verification & criticality): same shape, same
   // effective-value rule — `routine` includes unset cards. Filters compose.
   const [criticalityFilter, setCriticalityFilter] = useState<CriticalityFilter>("all");
+
+  // Columns render only once the work orders have loaded — otherwise the
+  // per-column empty hints make a pending query or a dead sidecar look like
+  // an empty-but-healthy board (loading/error copy matches Pulse and X-ray).
+  const viewState = boardViewState(workOrders);
+  if (viewState === "loading") {
+    return <p style={{ color: color.muted }}>Loading the board…</p>;
+  }
+  if (viewState === "error") {
+    return <p style={{ color: color.danger }}>Could not load the work orders — is the sidecar running?</p>;
+  }
+
+  const readinessById = new Map((readiness.data ?? []).map((r) => [r.id, r]));
   const visible = filterByCriticality(filterByWorkType(workOrders.data ?? [], typeFilter), criticalityFilter);
 
   return (
