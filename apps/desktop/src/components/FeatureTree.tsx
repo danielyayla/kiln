@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BlueprintNode, Entity, FeatureTreeNode } from "@kiln/core";
 import { api } from "../lib/client";
 import { productRootNode, treeProgress } from "../lib/tree-stats";
-import { Badge, Button, Chevron, Input, RowMenu, SectionHeader, StatusDot, type RowMenuItem } from "./ui";
+import { Badge, Button, Chevron, Input, RowMenu, SectionHeader, StatusDot, useDialog, type RowMenuItem } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 // The unified navigator (BP-6, redesigned in BP-15): requirements as the
@@ -170,6 +170,7 @@ export function FeatureTree({
   onDeleted: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const dialog = useDialog();
   const [collapsed, setCollapsed] = useState(loadCollapsed);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [addingChildOf, setAddingChildOf] = useState<string | null>(null);
@@ -225,9 +226,14 @@ export function FeatureTree({
   });
 
   const confirmDelete = (entity: Entity) => {
-    if (window.confirm(`Delete "${entity.title}"? This also removes its links, suggestions, and revisions.`)) {
-      remove.mutate(entity.id);
-    }
+    void dialog
+      .confirm(`Delete "${entity.title}"? This also removes its links, suggestions, and revisions.`, {
+        confirmLabel: "Delete",
+        danger: true,
+      })
+      .then((ok) => {
+        if (ok) remove.mutate(entity.id);
+      });
   };
 
   // Rendered inside the row (replacing the label), so it needs no indent.

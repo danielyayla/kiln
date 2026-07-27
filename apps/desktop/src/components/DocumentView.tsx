@@ -10,7 +10,7 @@ import { entityLink } from "../lib/route";
 import { Editor } from "./Editor";
 import { ProposalWalkBanner } from "./ProposalQueue";
 import { RevisionDiff } from "./RevisionDiff";
-import { Button, Select, useToast } from "./ui";
+import { Button, Select, useDialog, useToast } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 // Severity → token color for the findings panel chips (WO-C1).
@@ -43,6 +43,7 @@ export function DocumentView({
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const dialog = useDialog();
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [openRevisionId, setOpenRevisionId] = useState<string | null>(null);
 
@@ -268,9 +269,14 @@ export function DocumentView({
             variant="danger"
             data-testid="delete-entity"
             onClick={() => {
-              if (window.confirm(`Delete "${e.title}"? This also removes its links, suggestions, and revisions.`)) {
-                remove.mutate();
-              }
+              void dialog
+                .confirm(`Delete "${e.title}"? This also removes its links, suggestions, and revisions.`, {
+                  confirmLabel: "Delete",
+                  danger: true,
+                })
+                .then((ok) => {
+                  if (ok) remove.mutate();
+                });
             }}
             disabled={remove.isPending}
           >

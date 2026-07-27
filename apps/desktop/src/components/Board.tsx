@@ -9,7 +9,7 @@ import {
   filterByCriticality,
   type CriticalityFilter,
 } from "../lib/criticality";
-import { BlockedBadge, Button, Input, RowMenu, SectionHeader, Select, STATUS_COLOR, STATUS_LABEL } from "./ui";
+import { BlockedBadge, Button, Input, RowMenu, SectionHeader, Select, STATUS_COLOR, STATUS_LABEL, useDialog } from "./ui";
 import { color, font, radius, space } from "../theme";
 
 // Local literal (type-checked against core) — value imports from @kiln/core
@@ -161,6 +161,7 @@ function Card({
   onSelect: (id: string) => void;
 }) {
   const queryClient = useQueryClient();
+  const dialog = useDialog();
   const [assignee, setAssignee] = useState("");
   const status = workOrder.status ?? "draft";
   // The badge marks ready-but-blocked cards: exactly the ones an agent would
@@ -198,11 +199,13 @@ function Card({
       // The draft→ready completeness gate: show the blockers, offer the
       // explicit override. Everything else surfaces as a plain alert.
       if (msg.includes("completeness gate") && vars.status === "ready") {
-        if (window.confirm(`${msg}\n\nSet ready anyway?`)) {
-          patch.mutate({ status: "ready", overrideGate: true });
-        }
+        void dialog
+          .confirm(`${msg}\n\nSet ready anyway?`, { confirmLabel: "Set ready anyway" })
+          .then((ok) => {
+            if (ok) patch.mutate({ status: "ready", overrideGate: true });
+          });
       } else {
-        window.alert(msg);
+        void dialog.alert(msg);
       }
     },
   });
@@ -254,7 +257,11 @@ function Card({
           aria-label={`delete ${workOrder.title}`}
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete work order "${workOrder.title}"?`)) remove.mutate();
+            void dialog
+              .confirm(`Delete work order "${workOrder.title}"?`, { confirmLabel: "Delete", danger: true })
+              .then((ok) => {
+                if (ok) remove.mutate();
+              });
           }}
           disabled={remove.isPending}
           style={{ color: color.danger, fontSize: font.xs, flexShrink: 0, padding: `0 ${space(1)}px` }}

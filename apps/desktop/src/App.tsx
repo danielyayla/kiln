@@ -13,7 +13,7 @@ import { PulseView } from "./components/PulseView";
 import { SettingsView } from "./components/SettingsView";
 import { TopBar } from "./components/TopBar";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { Button, Input, ToastProvider, useToast } from "./components/ui";
+import { Button, DialogProvider, Input, ToastProvider, useToast } from "./components/ui";
 import { navigate, routeAfterProjectSwitch, useRoute } from "./lib/route";
 import { resolveKey } from "./lib/keyboard";
 import { color, font, space } from "./theme";
@@ -118,114 +118,116 @@ export function App() {
 
   return (
     <ToastProvider>
-      <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-        <UpdateBanner />
-        <TopBar
-          view={view}
-          onViewChange={(v) => navigate({ view: v })}
-          onQuickOpen={() => setQuickOpen(true)}
-          // A project switch swapped the whole workspace (the switcher already
-          // activated the new store and cleared the query cache). Keep the
-          // opened entity if it still exists in the new project; otherwise land
-          // on Pulse (Navigation & deep linking — no more hard reset).
-          onProjectSwitched={async () => {
-            setQuickOpen(false);
-            let exists = false;
-            if (selectedId) {
-              try {
-                await api.getEntity(selectedId);
-                exists = true;
-              } catch {
-                exists = false;
+      <DialogProvider>
+        <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+          <UpdateBanner />
+          <TopBar
+            view={view}
+            onViewChange={(v) => navigate({ view: v })}
+            onQuickOpen={() => setQuickOpen(true)}
+            // A project switch swapped the whole workspace (the switcher already
+            // activated the new store and cleared the query cache). Keep the
+            // opened entity if it still exists in the new project; otherwise land
+            // on Pulse (Navigation & deep linking — no more hard reset).
+            onProjectSwitched={async () => {
+              setQuickOpen(false);
+              let exists = false;
+              if (selectedId) {
+                try {
+                  await api.getEntity(selectedId);
+                  exists = true;
+                } catch {
+                  exists = false;
+                }
               }
-            }
-            const patch = routeAfterProjectSwitch(selectedId, exists);
-            if (patch) navigate(patch, { replace: true });
-          }}
-        />
-        {quickOpen && (
-          <QuickOpen
-            onClose={() => setQuickOpen(false)}
-            onSelect={(id) => openDoc(id)}
-          />
-        )}
-        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          {/* The X-ray is a full-bleed canvas, the Pulse is a whole-project
-              overview, and Settings is app config — none of them wants the
-              document navigator. */}
-          {view !== "xray" && view !== "pulse" && view !== "settings" && (
-            <nav
-              aria-label="Navigator"
-              style={{
-                width: 280,
-                flexShrink: 0,
-                borderRight: `1px solid ${color.border}`,
-                padding: space(4),
-                overflowY: "auto",
-                background: color.surface,
-              }}
-            >
-              <FeatureTree
-                selectedId={selectedId}
-                onSelect={(id) => openDoc(id)}
-                onDeleted={(id) => {
-                  if (selectedId === id) clearSelection();
-                }}
-              />
-              <ArtifactsPanel selectedId={selectedId} onSelect={(id) => openDoc(id)} />
-            </nav>
-          )}
-          <main
-            style={{
-              flex: 1,
-              // The X-ray canvas manages its own space; the board wants every
-              // horizontal pixel; documents read better with wider margins.
-              padding:
-                view === "xray"
-                  ? 0
-                  : view === "board"
-                    ? space(4)
-                    : `${space(6)}px ${space(8)}px`,
-              overflowY: view === "xray" ? "hidden" : "auto",
-              minWidth: 0,
+              const patch = routeAfterProjectSwitch(selectedId, exists);
+              if (patch) navigate(patch, { replace: true });
             }}
-          >
-            {view === "xray" ? (
-              <XRayView onSelect={(id) => openDoc(id)} />
-            ) : view === "settings" ? (
-              <SettingsView />
-            ) : view === "pulse" ? (
-              // An empty dashboard is worse than an empty state: a fresh store
-              // gets the create-first-requirement CTA here too.
-              isFreshStore ? (
-                <ZeroState onCreated={(id) => openDoc(id)} />
-              ) : (
-                <PulseView onSelect={(id) => openDoc(id)} />
-              )
-            ) : view === "board" ? (
-              <Board onSelect={(id) => openDoc(id)} />
-            ) : selectedId ? (
-              <DocumentView entityId={selectedId} onSelect={(id) => openDoc(id)} onDeleted={() => clearSelection()} />
-            ) : isFreshStore ? (
-              <ZeroState onCreated={(id) => openDoc(id)} />
-            ) : (
-              <p style={{ color: color.muted }}>
-                Select a requirement or artifact to open its document — or press ⌘K to search.
-              </p>
-            )}
-          </main>
-          {view === "documents" && selectedId && (
-            <RightPanel
-              entityId={selectedId}
+          />
+          {quickOpen && (
+            <QuickOpen
+              onClose={() => setQuickOpen(false)}
               onSelect={(id) => openDoc(id)}
-              tab={panelTab ?? "graph"}
-              // A tab switch is an in-place refinement, not a destination:
-              // replace so Back skips past it to the previous location.
-              onTabChange={(t) => navigate({ panelTab: t === "graph" ? null : t }, { replace: true })}
             />
           )}
+          <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+            {/* The X-ray is a full-bleed canvas, the Pulse is a whole-project
+                overview, and Settings is app config — none of them wants the
+                document navigator. */}
+            {view !== "xray" && view !== "pulse" && view !== "settings" && (
+              <nav
+                aria-label="Navigator"
+                style={{
+                  width: 280,
+                  flexShrink: 0,
+                  borderRight: `1px solid ${color.border}`,
+                  padding: space(4),
+                  overflowY: "auto",
+                  background: color.surface,
+                }}
+              >
+                <FeatureTree
+                  selectedId={selectedId}
+                  onSelect={(id) => openDoc(id)}
+                  onDeleted={(id) => {
+                    if (selectedId === id) clearSelection();
+                  }}
+                />
+                <ArtifactsPanel selectedId={selectedId} onSelect={(id) => openDoc(id)} />
+              </nav>
+            )}
+            <main
+              style={{
+                flex: 1,
+                // The X-ray canvas manages its own space; the board wants every
+                // horizontal pixel; documents read better with wider margins.
+                padding:
+                  view === "xray"
+                    ? 0
+                    : view === "board"
+                      ? space(4)
+                      : `${space(6)}px ${space(8)}px`,
+                overflowY: view === "xray" ? "hidden" : "auto",
+                minWidth: 0,
+              }}
+            >
+              {view === "xray" ? (
+                <XRayView onSelect={(id) => openDoc(id)} />
+              ) : view === "settings" ? (
+                <SettingsView />
+              ) : view === "pulse" ? (
+                // An empty dashboard is worse than an empty state: a fresh store
+                // gets the create-first-requirement CTA here too.
+                isFreshStore ? (
+                  <ZeroState onCreated={(id) => openDoc(id)} />
+                ) : (
+                  <PulseView onSelect={(id) => openDoc(id)} />
+                )
+              ) : view === "board" ? (
+                <Board onSelect={(id) => openDoc(id)} />
+              ) : selectedId ? (
+                <DocumentView entityId={selectedId} onSelect={(id) => openDoc(id)} onDeleted={() => clearSelection()} />
+              ) : isFreshStore ? (
+                <ZeroState onCreated={(id) => openDoc(id)} />
+              ) : (
+                <p style={{ color: color.muted }}>
+                  Select a requirement or artifact to open its document — or press ⌘K to search.
+                </p>
+              )}
+            </main>
+            {view === "documents" && selectedId && (
+              <RightPanel
+                entityId={selectedId}
+                onSelect={(id) => openDoc(id)}
+                tab={panelTab ?? "graph"}
+                // A tab switch is an in-place refinement, not a destination:
+                // replace so Back skips past it to the previous location.
+                onTabChange={(t) => navigate({ panelTab: t === "graph" ? null : t }, { replace: true })}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </DialogProvider>
     </ToastProvider>
   );
 }
