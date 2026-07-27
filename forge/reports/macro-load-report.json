@@ -1,16 +1,14 @@
 {
-  "loaded": 0,
+  "loaded": 5,
   "rejectedExcerpt": [],
   "rejectedShape": [],
   "perSource": {
-    "Archived blueprint: Macro Tracker Survey system architecture": 0
+    "Archived blueprint: Macro Tracker Survey system architecture": 5
   },
-  "emptySources": [
-    "Archived blueprint: Macro Tracker Survey system architecture"
-  ],
+  "emptySources": [],
   "sourcesProcessed": 1,
   "stillPending": 0,
-  "provisionalDecisions": 0,
+  "provisionalDecisions": 5,
   "tasksNowGoverned": 0,
   "tasksUngoverned": 0
 }

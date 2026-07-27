@@ -1,17 +1,17 @@
 {
   "kindCounts": {
-    "decision": 6,
+    "decision": 9,
     "intent": 2,
-    "source": 5
+    "source": 7
   },
   "relCounts": {
     "cites": 6,
-    "governs": 6,
+    "governs": 9,
     "part_of": 1,
-    "version_of": 2
+    "version_of": 4
   },
   "aliases": 5,
-  "revisionsMigrated": 2,
+  "revisionsMigrated": 4,
   "distillPending": 1,
   "replay": {
     "ok": 0,
