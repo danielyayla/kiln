@@ -11,7 +11,7 @@ import {
   statusLine,
 } from "../lib/agent-access";
 import { declaredTemplateTypes, type TemplateType } from "../lib/skill-templates";
-import { Button, Input, RowMenu, SectionHeader, useToast } from "./ui";
+import { Button, Input, RowMenu, SectionHeader, useDialog, useToast } from "./ui";
 
 // Template-override chip: reuses the entity badge palette (ui/Badge is
 // EntityType-keyed, and these chips point at the same document types).
@@ -196,6 +196,7 @@ Optionally declare a template that replaces the built-in structure when the AI d
 function AuthoringSkillsCard() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const dialog = useDialog();
   const [newTitle, setNewTitle] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
@@ -216,14 +217,14 @@ function AuthoringSkillsCard() {
 
   // Guard against silently discarding edits: closing (or switching away from)
   // an editor with unsaved title/body changes asks first.
-  const confirmDiscard = () => {
+  const confirmDiscard = async () => {
     const editing = docs.find((d) => d.id === editingId);
     const dirty = editing && (draftTitle !== editing.title || draftBody !== editing.body);
-    return !dirty || window.confirm("Discard unsaved changes to this skill?");
+    return !dirty || dialog.confirm("Discard unsaved changes to this skill?", { confirmLabel: "Discard" });
   };
 
-  const openEditor = (doc: AuthoringSkillDoc) => {
-    if (editingId && editingId !== doc.id && !confirmDiscard()) return;
+  const openEditor = async (doc: AuthoringSkillDoc) => {
+    if (editingId && editingId !== doc.id && !(await confirmDiscard())) return;
     setEditingId(doc.id);
     setDraftTitle(doc.title);
     setDraftBody(doc.body);
@@ -243,7 +244,7 @@ function AuthoringSkillsCard() {
       body: NEW_SKILL_BODY,
       enabled: true,
     };
-    put.mutate([...docs, doc], { onSuccess: () => openEditor(doc) });
+    put.mutate([...docs, doc], { onSuccess: () => void openEditor(doc) });
     setNewTitle("");
   };
 
@@ -289,9 +290,11 @@ function AuthoringSkillsCard() {
                 <button
                   onClick={() => {
                     if (editingId === doc.id) {
-                      if (confirmDiscard()) closeEditor();
+                      void confirmDiscard().then((ok) => {
+                        if (ok) closeEditor();
+                      });
                     } else {
-                      openEditor(doc);
+                      void openEditor(doc);
                     }
                   }}
                   title={editingId === doc.id ? "Close editor" : "Edit this skill"}
@@ -337,10 +340,16 @@ function AuthoringSkillsCard() {
                       label: "Delete",
                       danger: true,
                       onSelect: () => {
-                        if (window.confirm(`Delete the skill "${doc.title}"? There is no undo.`)) {
-                          if (editingId === doc.id) closeEditor();
-                          put.mutate(docs.filter((d) => d.id !== doc.id));
-                        }
+                        void dialog
+                          .confirm(`Delete the skill "${doc.title}"? There is no undo.`, {
+                            confirmLabel: "Delete",
+                            danger: true,
+                          })
+                          .then((ok) => {
+                            if (!ok) return;
+                            if (editingId === doc.id) closeEditor();
+                            put.mutate(docs.filter((d) => d.id !== doc.id));
+                          });
                       },
                     },
                   ]}
@@ -378,7 +387,14 @@ function AuthoringSkillsCard() {
                     }}
                   />
                   <div style={{ display: "flex", gap: space(2), justifyContent: "flex-end" }}>
-                    <Button variant="ghost" onClick={() => confirmDiscard() && closeEditor()}>
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        void confirmDiscard().then((ok) => {
+                          if (ok) closeEditor();
+                        })
+                      }
+                    >
                       Cancel
                     </Button>
                     <Button
