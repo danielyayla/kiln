@@ -8,6 +8,23 @@ const [snapshotPath, forgePath, reportPath] = process.argv.slice(2);
 const src = new DatabaseSync(snapshotPath, { readOnly: true });
 const A = (sql) => src.prepare(sql).all();
 
+// ---------- freeze precondition (before any destination is created) ----------
+const suggestionsTable = src
+  .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='suggestions'")
+  .get();
+if (suggestionsTable && !process.argv.includes("--allow-pending")) {
+  const pendingSuggestions = src
+    .prepare(`SELECT s.id, e.type, e.title FROM suggestions s JOIN entities e ON e.id = s.target_id`)
+    .all();
+  if (pendingSuggestions.length) {
+    console.error(
+      `Refusing to migrate: ${pendingSuggestions.length} pending suggestion(s) — unresolved content that would be silently dropped. Resolve them in the app first (or pass --allow-pending to override):`,
+    );
+    for (const p of pendingSuggestions) console.error(`  - [${p.type}] ${p.title}`);
+    process.exit(1);
+  }
+}
+
 const dst = new DatabaseSync(forgePath);
 dst.exec(`
   PRAGMA journal_mode = WAL;
