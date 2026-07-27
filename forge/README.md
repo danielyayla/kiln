@@ -31,7 +31,8 @@ design-brief analysis session; nothing here is wired into the product.
   dry-run mapping, mechanical-pass integrity results (all checks zero
   violations; 93/93 receipt replay), distillation load report (176 loaded,
   0 evidence rejections), and the full screened ratification queue.
-  The `bench-*` files are the same reports for the second run (below).
+  The `bench-*` and `macro-*` files are the same reports for the second
+  and third runs (below).
 
 ## Final state of `forge.db`
 
@@ -54,15 +55,26 @@ made the survey's output ~85% mechanically extractable.
 
 `~/.kiln/projects/macro-tracker-survey/` — first refused by the freeze
 gate (2 pending suggestions held the only real content), migrated after
-the human accepted the proposals in the app. Final state: 2 intents ·
-6 decisions (all ratified at birth — verbatim from the accepted
-documents; the ratification queue never had an entry) · 5 sources ·
-no tasks. The one distill-pending source was the pristine seeded
-architecture template and was recorded as a zero-yield distillation.
+the human accepted the proposals in the app. The first pass yielded
+2 intents · 6 decisions · 5 sources, with the one distill-pending
+source being the pristine seeded architecture template (recorded as a
+zero-yield distillation) — the store had no root overview yet.
+
+The gap was then closed the proper way: `propose_root_overview` was
+called over MCP against a store-pinned server, the human accepted the
+two proposals (root overview + architecture) in the app, and the
+pipeline was re-run. Final state: 2 intents · 14 decisions (all
+ratified: 9 mechanical — 3 KD bullets and 6 Non-goals scope decisions —
+plus 5 distilled from the architecture prose, screened 5-clean/0-flagged
+and human-ratified) · 7 sources · no tasks. Accepting two documents
+moved the store from 6 decisions/zero-yield to 14 — the write gate
+paying out at migration time in miniature.
+
 Across the three runs the gradient is consistent: the stricter the
 write gate at authoring time, the more mechanical the migration
 (main store 299 decisions/heavy distillation → benchmark 66/one →
-macro-tracker 6/zero).
+macro-tracker 14, of which the only distillation ran against a
+document that was itself born through a validated propose_* gate).
 
 Scripts need `node --experimental-sqlite` on Node 22.x (stable on 24+).
 The source snapshot was taken with `VACUUM INTO` from `~/.kiln/kiln.db`;

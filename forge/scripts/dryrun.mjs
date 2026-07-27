@@ -1,9 +1,13 @@
 // Forge migration dry-run: read-only analysis of the live Kiln store.
 import { DatabaseSync } from "node:sqlite";
-import { homedir } from "node:os";
 import { writeFileSync } from "node:fs";
 
-const db = new DatabaseSync(`${homedir()}/.kiln/kiln.db`, { readOnly: true });
+const [dbPath, reportPath] = process.argv.slice(2);
+if (!dbPath || !reportPath) {
+  console.error("usage: dryrun.mjs <kiln.db> <report.md>");
+  process.exit(1);
+}
+const db = new DatabaseSync(dbPath, { readOnly: true });
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const one = (sql, ...p) => db.prepare(sql).get(...p);
 
@@ -97,7 +101,7 @@ const legacyBps = bpRows.filter((x) => x.cls !== "conformant");
 const L = [];
 const p = (s = "") => L.push(s);
 p(`# Forge migration dry-run — live store mapping report`);
-p(`Store: ~/.kiln/kiln.db (project "Kiln") · generated read-only\n`);
+p(`Store: ${dbPath} · generated read-only\n`);
 p(`## Totals`);
 p(`| Kiln | count | Forge disposition |`);
 p(`|---|---|---|`);
@@ -145,6 +149,6 @@ p(``);
 p(`## Artifacts → Sources`);
 for (const a of arts) p(`- ${a.title.slice(0, 90)} (referenced by ${refs.filter((r) => r.to_id === a.id).length} requirement(s))`);
 
-writeFileSync(process.argv[2], L.join("\n"));
+writeFileSync(reportPath, L.join("\n"));
 console.log(L.slice(0, 40).join("\n"));
 console.log(`\n... full report written (${L.length} lines)`);
