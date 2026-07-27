@@ -47,6 +47,22 @@
       "autoPort": false
     },
     {
+      "name": "kiln-desktop-vite-1433-scratch",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "VITE_KILN_SIDECAR_URL=http://127.0.0.1:4899",
+        "pnpm",
+        "-C",
+        "apps/desktop",
+        "exec",
+        "vite",
+        "--port",
+        "1433"
+      ],
+      "port": 1433,
+      "autoPort": false
+    },
+    {
       "name": "kiln-desktop-vite-1431",
       "runtimeExecutable": "env",
       "runtimeArgs": [
