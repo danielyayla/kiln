@@ -1,0 +1,43 @@
+{
+  "kindCounts": {
+    "decision": 6,
+    "intent": 2,
+    "source": 5
+  },
+  "relCounts": {
+    "cites": 6,
+    "governs": 6,
+    "part_of": 1,
+    "version_of": 2
+  },
+  "aliases": 5,
+  "revisionsMigrated": 2,
+  "distillPending": 1,
+  "replay": {
+    "ok": 0,
+    "fail": 0
+  },
+  "checks": [
+    {
+      "name": "every non-degraded task fulfills an intent",
+      "violations": 0
+    },
+    {
+      "name": "every decision governs something",
+      "violations": 0
+    },
+    {
+      "name": "every receipt records a task",
+      "violations": 0
+    },
+    {
+      "name": "dangling edges",
+      "violations": 0
+    },
+    {
+      "name": "intents without part_of except root",
+      "violations": 0
+    }
+  ],
+  "flags": []
+}

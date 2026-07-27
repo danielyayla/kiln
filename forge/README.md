@@ -50,6 +50,20 @@ history). The contrast with the main store (9/35 conformant blueprints
 vs 14/15 here) is the point: template validation at the write boundary
 made the survey's output ~85% mechanically extractable.
 
+## Third run: the macro-tracker store (`forge-macro.db`, local-only)
+
+`~/.kiln/projects/macro-tracker-survey/` — first refused by the freeze
+gate (2 pending suggestions held the only real content), migrated after
+the human accepted the proposals in the app. Final state: 2 intents ·
+6 decisions (all ratified at birth — verbatim from the accepted
+documents; the ratification queue never had an entry) · 5 sources ·
+no tasks. The one distill-pending source was the pristine seeded
+architecture template and was recorded as a zero-yield distillation.
+Across the three runs the gradient is consistent: the stricter the
+write gate at authoring time, the more mechanical the migration
+(main store 299 decisions/heavy distillation → benchmark 66/one →
+macro-tracker 6/zero).
+
 Scripts need `node --experimental-sqlite` on Node 22.x (stable on 24+).
 The source snapshot was taken with `VACUUM INTO` from `~/.kiln/kiln.db`;
 re-running against a fresh snapshot reproduces the pipeline end to end
