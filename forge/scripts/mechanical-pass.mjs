@@ -221,10 +221,13 @@ for (const a of entities.filter((e) => e.type === "artifact")) {
 }
 
 // ---------- 6. receipts ----------
+const hasTable = (t) =>
+  !!src.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
+const rowsOf = (t) => (hasTable(t) ? A(`SELECT * FROM ${t}`) : []);
 const receiptRows = [
-  ...A("SELECT * FROM context_receipts").map((r) => ({ r, k: "context" })),
-  ...A("SELECT * FROM completion_receipts").map((r) => ({ r, k: "completion" })),
-  ...A("SELECT * FROM verification_receipts").map((r) => ({ r, k: "verification" })),
+  ...rowsOf("context_receipts").map((r) => ({ r, k: "context" })),
+  ...rowsOf("completion_receipts").map((r) => ({ r, k: "completion" })),
+  ...rowsOf("verification_receipts").map((r) => ({ r, k: "verification" })),
 ];
 for (const { r, k } of receiptRows) {
   const task = woTask.get(r.work_order_id);
@@ -241,7 +244,7 @@ for (const { r, k } of receiptRows) {
 
 // ---------- 7. revisions -> version Sources ----------
 let revCount = 0;
-for (const rev of A("SELECT * FROM revisions")) {
+for (const rev of rowsOf("revisions")) {
   const targetAlias = dst.prepare("SELECT forge_id FROM aliases WHERE kiln_id = ?").get(rev.entity_id);
   const tEnt = byId.get(rev.entity_id);
   const id = unit({
@@ -272,7 +275,7 @@ const checks = [
 
 // receipt replay (light): every context receipt's payload WO id resolves via alias to a task
 let replayOk = 0, replayFail = 0;
-for (const r of A("SELECT * FROM context_receipts"))
+for (const r of rowsOf("context_receipts"))
   woTask.get(r.work_order_id) ? replayOk++ : replayFail++;
 
 const kindCounts = Object.fromEntries(

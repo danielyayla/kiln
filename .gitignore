@@ -16,4 +16,4 @@ apps/desktop/app-icon.png
 
 # macOS
 .DS_Store
-forge/forge.db
+forge/*.db*

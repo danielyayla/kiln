@@ -31,12 +31,24 @@ design-brief analysis session; nothing here is wired into the product.
   dry-run mapping, mechanical-pass integrity results (all checks zero
   violations; 93/93 receipt replay), distillation load report (176 loaded,
   0 evidence rejections), and the full screened ratification queue.
+  The `bench-*` files are the same reports for the second run (below).
 
 ## Final state of `forge.db`
 
 28 intents · 299 decisions (all ratified) · 156 tasks (149 governed,
 7 degraded-archived) · 99 sources · 137 receipts · 243 aliases. Zero
 unratified units, zero ungoverned tasks, zero dangling edges.
+
+## Second run: the survey-benchmark store (`forge-bench.db`, local-only)
+
+The pipeline was also run against `~/.kiln/projects/kiln-survey-benchmark/`
+— a store built entirely by the survey agent through `propose_feature`.
+Final state: 15 intents · 66 decisions (all ratified: 56 mechanical +
+10 distilled from the one non-templated root architecture blueprint) ·
+59 sources · no tasks or receipts (a surveyed project has no execution
+history). The contrast with the main store (9/35 conformant blueprints
+vs 14/15 here) is the point: template validation at the write boundary
+made the survey's output ~85% mechanically extractable.
 
 Scripts need `node --experimental-sqlite` on Node 22.x (stable on 24+).
 The source snapshot was taken with `VACUUM INTO` from `~/.kiln/kiln.db`;
