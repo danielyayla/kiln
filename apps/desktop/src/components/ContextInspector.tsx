@@ -302,11 +302,40 @@ function ReceiptHistory({
 
   return (
     <div>
-      <p style={{ margin: `0 0 ${space(2)}px`, fontSize: font.xs, color: color.faint }}>
+      <p style={{ margin: `0 0 ${space(1)}px`, fontSize: font.xs, color: color.faint }}>
         {receipts.length} deliver{receipts.length === 1 ? "y" : "ies"} · {completions.length} return
-        {completions.length === 1 ? "" : "s"}
-        {receipts.length > 0 ? " — click a delivery to compare with now, shift-click to set the other end." : "."}
+        {completions.length === 1 ? "" : "s"}.
       </p>
+      {receipts.length > 0 && (
+        // The compare affordance stays visible on its own line — buried as a
+        // sentence tail, shift-click was effectively undiscoverable.
+        <p
+          data-testid="compare-cue"
+          style={{
+            margin: `0 0 ${space(2)}px`,
+            fontSize: font.xs,
+            color: color.muted,
+            display: "flex",
+            alignItems: "center",
+            gap: space(1),
+            flexWrap: "wrap",
+          }}
+        >
+          <span>Compare any two handoffs: click a delivery to diff it against now, or</span>
+          <kbd
+            style={{
+              font: "inherit",
+              fontFamily: "ui-monospace, monospace",
+              border: `1px solid ${color.borderStrong}`,
+              borderRadius: radius.sm,
+              padding: `0 ${space(1)}px`,
+            }}
+          >
+            Shift
+          </kbd>
+          <span>+ click to set the other end — {slotChip("from")} and {slotChip("to")} mark the two points.</span>
+        </p>
+      )}
 
       <ol data-testid="receipt-timeline" style={{ listStyle: "none", margin: `0 0 ${space(3)}px`, padding: 0, display: "grid", gap: 2 }}>
         {(receipts.length > 0 ? [items[0], ...rows] : rows).map((entry) => {
